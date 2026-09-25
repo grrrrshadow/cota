@@ -144,8 +144,11 @@ public class ContainerManager {
 
         File srcDriveCDir = getLinkedDriveCDir(srcContainer.getRootDir());
         if (srcDriveCDir != null) {
-            if (!linkExternalDriveC(dstDir, id) || !FileUtils.copy(srcDriveCDir, getExternalDriveCDir(id))) {
+            File dstDriveCDir = getExternalDriveCDir(id);
+            boolean createdDriveCDir = !dstDriveCDir.exists();
+            if (!linkExternalDriveC(dstDir, id) || !FileUtils.copy(srcDriveCDir, dstDriveCDir)) {
                 FileUtils.delete(dstDir);
+                if (createdDriveCDir) FileUtils.delete(dstDriveCDir);
                 return;
             }
         }

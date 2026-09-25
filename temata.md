@@ -73,6 +73,23 @@ bash gradlew --no-daemon --max-workers=2 assembleDebug   # při 429 z Maven Cent
 - Vulkan: Turnip 26.2.0 (Adreno), Vortek 2.1 (ostatní). DXVK a VKD3D běží přes Vulkan.
 - **Telefony uživatele:** cílový je **Motorola Edge 60 Fusion** (Dimensity 7300, GPU **Mali-G615 MC2**, GLES 3.2, Vulkan 1.3), teď v servisu; zatím zkouší na **Oppo A18** (Helio G85, Mali-G52 MC2, GLES 3.2, slabý). Obojí Mali → Turnip nejde, Zink jen přes Vortek (ořezaný na 3.3). Uživateli funguje **VirGL s nastavením 4.0**. Nejvyšší reálná úroveň na Mali je tedy VirGL ~4.3 (core), Gladio 3.3.
 
+## Výsledky kontroly změn (25. 9. 2026)
+
+- Opraveno: otevření souboru z C: (html, pdf, txt) přes FileProvider padalo, protože `file_paths.xml` znal jen interní úložiště → přidán `external-path`.
+- Opraveno: logy obou aplikací šly do `Documents/Winlator/logs.txt` a navzájem se mazaly → Winlator DL loguje do `Documents/WinlatorDL`.
+- Opraveno: neúspěšná duplikace kontejneru nechala v `Download/winlator/containerN` částečnou kopii → smaže ji, pokud ji sama vytvořila.
+- **Známé omezení:** obě aplikace používají stejné pevné UDP porty na 127.0.0.1 (WinHandler 7946/7947, winebus 7949, MIDI 7950). **Nespouštět kontejner v obou aplikacích současně**, jinak si kradou ovladač, správce úloh a MIDI. Neřešeno.
+- Známé omezení: přejmenování jen změnou velikosti písmen (např. `hra` → `Hra`) na C: nic neudělá, sdílené úložiště nerozlišuje velikost písmen. Neřešeno.
+- Po odinstalaci zůstane `Download/winlator/containerN`. Nový kontejner se stejným číslem data převezme (soubory uživatele zůstanou, systémové soubory Windows se přepíšou šablonou). Záměr: hry přežijí přeinstalaci. Když chce uživatel čistý start, musí složku smazat ručně.
+
+## Průzkum OpenGL v kódu (25. 9. 2026)
+
+- **Gladio**: vzdálené volání GL přes sdílenou paměť do rendereru v aplikaci na GLES 3 kontextu. Prakticky vyžaduje GLES 3.2 (shadery vždy `#version 320 es`). Hlásí verzi 3.3, ale limity pod minimem GL 3.3 (8 texturovacích jednotek, max textura 4096, 4 světla). 163 příkazů na straně rendereru je jen „not implemented“ (display listy, clip planes, glTexGen, glDispatchCompute…), wireframe (`glPolygonMode GL_LINE`) kreslí špatně. DXT textury rozbaluje na CPU. Žádný vsync ani nastavení v UI. GLX odmítne kontext > 3.3.
+  - Levné zlepšení: nastavitelná verze přes env proměnnou (jen pro hry, co kontrolují číslo), reálné limity z telefonu, opravit wireframe, dialog s nastavením Gladia. Velké: zpřístupnit GLES 3.1/3.2 compute/SSBO/tesselaci jako GL 4.x (týdny).
+- **Zink 22.2.5**: stará verze (xlib GLX, každý snímek jde přes CPU a XShmPutImage). Neumí nic z moderních rozšíření, která Turnip 26.2 má. Novější Zink pro glibc rootfs zatím nikdo nevydal, ale jde postavit na Ubuntu ≤ 24.04 (rootfs má GLIBC 2.39). S Vortekem (Mali) je natvrdo `MESA_GL_VERSION_OVERRIDE=3.3`; Vortek pro Zink vypíná některá rozšíření a propouští jen 55 vybraných.
+  - Pro Mali (telefony uživatele) nejvíc slibuje: vypnout pevné 3.3 u Vorteku jako volbu a zkusit, co Zink přes Vortek na Mali-G615 reálně nahlásí.
+- Neprozkoumáno (došly kredity): hlubší VirGL (host vs. nový virglrenderer), strana Wine a her, jiné forky Winlatoru se zdroji.
+
 ## Stav a otevřené věci
 
 - Winlator DL zatím nikdo nezkoušel na telefonu. Čekám na zpětnou vazbu uživatele.
