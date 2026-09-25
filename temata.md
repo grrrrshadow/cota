@@ -8,7 +8,8 @@ Kontejner, ve kterém pracuju, se maže. Všechno, co si potřebuju pamatovat, p
 - Ostatní repa (např. `brunodev85/winlator`, `brunodev85/winlator-app`, `brunodev85/vortek`, `brunodev85/gladio`) smím **jen číst**. Nikdy do nich nic nepsat.
 - Uživatel píše česky. Otázky piš normálně textem do chatu (ne přes dialog s možnostmi) a pak skonči.
 - `README.md` je schválně neutrální. Nepsat do něj, co děláme.
-- **Podpisový klíč nikdy necommitovat** (repo je veřejné). Má ho uživatel a je v GitHub secretu `SIGNING_KEYSTORE_BASE64`. Pro lokální build si ho vyžádej od uživatele a ulož do `~/.android/debug.keystore` (alias `androiddebugkey`, hesla `android`). SHA-256 certifikátu: `0c:e6:ee:30:b4:e4:38:f3:b4:96:53:e7:0a:2a:a7:03:4e:76:bf:26:49:8e:f9:cc:7d:81:14:c0:49:63:b1:c0`.
+- **Podpisový klíč ani nic z něj nikdy necommitovat** (repo je veřejné). Má ho uživatel (soubor „temata s klíčem“) a je v GitHub secretu `SIGNING_KEYSTORE_BASE64`. Pro lokální build si ho vyžádej od uživatele a ulož do `~/.android/debug.keystore`.
+- Veřejný otisk certifikátu (není to klíč, dá se přečíst z každého APK), podle něj poznáš správný klíč: SHA-256 `0c:e6:ee:30:b4:e4:38:f3:b4:96:53:e7:0a:2a:a7:03:4e:76:bf:26:49:8e:f9:cc:7d:81:14:c0:49:63:b1:c0`.
 - Uživatel nesmaže původní Winlator, dokud Winlator DL nebude fungovat na 100 %. Obě aplikace musí jít mít nainstalované současně.
 - Soubory do chatu jdou jen do 30 MB. APK (~150 MB) patří do GitHub Releases (viz CI níže).
 
