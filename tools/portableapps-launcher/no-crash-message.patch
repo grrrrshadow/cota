@@ -1,3 +1,41 @@
+diff --git a/Other/Source/Languages.nsh b/Other/Source/Languages.nsh
+index 501349b..0d0cfee 100644
+--- a/Other/Source/Languages.nsh
++++ b/Other/Source/Languages.nsh
+@@ -10,33 +10,6 @@
+ !macroend
+ !define IncludeLang "!insertmacro IncludeLang"
+ ${IncludeLang} English
+-${IncludeLang} Armenian
+-${IncludeLang} Bulgarian
+-${IncludeLang} Danish
+-${IncludeLang} Dutch
+-${IncludeLang} Estonian
+-${IncludeLang} Finnish
+-${IncludeLang} French
+-${IncludeLang} Galician
+-${IncludeLang} German
+-${IncludeLang} Hebrew
+-${IncludeLang} Hungarian
+-${IncludeLang} Indonesian
+-${IncludeLang} Italian
+-${IncludeLang} Japanese
+-${IncludeLang} Polish
+-${IncludeLang} Portuguese
+-${IncludeLang} PortugueseBR
+-${IncludeLang} Romanian
+-${IncludeLang} SimpChinese
+-${IncludeLang} Slovenian
+-${IncludeLang} Spanish
+-${IncludeLang} Sundanese
+-${IncludeLang} Swedish
+-${IncludeLang} Thai
+-${IncludeLang} TradChinese
+-${IncludeLang} Turkish
+-${IncludeLang} Vietnamese
+ 
+ ; Use the Case statements formed above.
+ ; Used in Segments/Language.nsh
 diff --git a/Other/Source/PortableApps.comLauncher.nsi b/Other/Source/PortableApps.comLauncher.nsi
 index 8275a66..6f9892b 100755
 --- a/Other/Source/PortableApps.comLauncher.nsi
