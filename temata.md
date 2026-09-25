@@ -94,8 +94,9 @@ bash gradlew --no-daemon --max-workers=2 assembleDebug   # při 429 z Maven Cent
 
 ## Hláška PortableApps „did not close properly“ (25. 9. 2026)
 
-- Hlásí ji spouštěč PortableApps.com (např. `D:\0exewin\TotalCommanderPortable\TotalCommanderPortable.exe`), ne Windows ani Wine. Za běhu si drží `Data\PortableApps.comLauncherRuntimeData-<AppID>.ini`. Když Winlator při Exit programy zabije, soubor zůstane a příští start jen ukáže hlášku a skončí.
-- Řešení (přání uživatele: jen odstranit hlášku, Exit neměnit): `core/PortableAppsLauncherState.removeStale()` při startu kontejneru (`setupWineSystemFiles`) projde C: a všechny disky do hloubky 2 složek a smaže tyhle soubory ze složek `Data`. Úklid spouštěče (obnova registru apod.) se tím přeskočí, uživatel to tak chce.
+- Hlásí ji spouštěč PortableApps.com (`TotalCommanderPortable.exe`, titulek okna „… (PortableApps.com Launcher)“), ne Windows ani Total Commander. Text je v `PortableApps.comLauncher.nsi:428` (`MessageBox MB_ICONSTOP $(LauncherCrashCleanup)`), před ním se nečte žádný klíč registru.
+- Uživatel chce hlášku **odstranit v kódu**, ne obcházet. Mazání ini ve Winlatoru i „slušné zavírání“ při Exit jsem na jeho přání vyhodil. Řešení: `tools/portableapps-launcher/` = patch spouštěče (zbylý runtime ini smaže a program normálně spustí) + `build.sh` (makensis na Linuxu, chybějící jazykové soubory z přibaleného NSIS převedené z cp1252 na UTF-8). Uživatel nahradí `D:\0exewin\TotalCommanderPortable\TotalCommanderPortable.exe`.
+- Uživatel tvrdí, že to na Windows vypínal v registru (HKLM). V kódu spouštěče žádný takový klíč není; nejspíš šlo o Windows Error Reporting (`DontShowUI`), to je jiná hláška. Kdyby řekl konkrétní klíč, nastavit ho v kontejneru je snadné.
 
 ## Průzkum OpenGL v kódu (25. 9. 2026)
 

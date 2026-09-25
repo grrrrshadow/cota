@@ -1,0 +1,50 @@
+diff --git a/Other/Source/PortableApps.comLauncher.nsi b/Other/Source/PortableApps.comLauncher.nsi
+index 8275a66..6f9892b 100755
+--- a/Other/Source/PortableApps.comLauncher.nsi
++++ b/Other/Source/PortableApps.comLauncher.nsi
+@@ -403,31 +403,21 @@ Section           ;{{{1
+ 		Quit
+ 	${EndIf}
+ 
+-	${IfNot} ${FileExists} $DataDirectory\PortableApps.comLauncherRuntimeData-$BaseName.ini
+-	${OrIf} $SecondaryLaunch == true
+-		${If} $SecondaryLaunch != true
+-			System::Call 'Kernel32::CreateMutex(i0, i0, t"PortableApps.comLauncher$AppID-$BaseName::Starting") i.r0'
+-			StrCpy $StatusMutex $0
+-		${EndIf}
+-		${CallPS} Pre +
+-		${CallPS} PreExec +
+-		${If} $SecondaryLaunch != true
+-			StrCpy $0 $StatusMutex
+-			System::Call 'Kernel32::CloseHandle(ir0) ?e'
+-			Pop $R9
+-		${EndIf}
+-		; File gets deleted in segment Core, hook Unload, so it'll only exist
+-		; in case of power-outage, disk removal while running or something like that.
+-		Call Execute
+-	${Else}
+-		; After doing Post, we don't do restart automatically as the variables
+-		; and environment are all altered and this may affect what happens
+-		; (some variables are checked against "" rather than initialising every
+-		; variable, and some may depend on environment variables, so spawing a
+-		; new instance isn't safe either)
+-		MessageBox MB_ICONSTOP $(LauncherCrashCleanup)
+-		; One possible solution: ExecWait another copy of self to do cleanup
++	; A runtime data file left by a killed launcher no longer blocks the start
++	; with a "did not close properly" message: drop it and launch normally.
++	${If} $SecondaryLaunch != true
++		Delete $DataDirectory\PortableApps.comLauncherRuntimeData-$BaseName.ini
++		System::Call 'Kernel32::CreateMutex(i0, i0, t"PortableApps.comLauncher$AppID-$BaseName::Starting") i.r0'
++		StrCpy $StatusMutex $0
++	${EndIf}
++	${CallPS} Pre +
++	${CallPS} PreExec +
++	${If} $SecondaryLaunch != true
++		StrCpy $0 $StatusMutex
++		System::Call 'Kernel32::CloseHandle(ir0) ?e'
++		Pop $R9
+ 	${EndIf}
++	Call Execute
+ 	${If} $SecondaryLaunch != true
+ 		System::Call 'Kernel32::CreateMutex(i0, i0, t"PortableApps.comLauncher$AppID-$BaseName::Stopping")'
+ 	${EndIf}
