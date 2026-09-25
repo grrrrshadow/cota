@@ -275,6 +275,7 @@
     <string name="audio">Audio</string>
     <string name="opengl_version">OpenGL Version</string>
     <string name="disable_vertex_array_bgra">Disable vertex array BGRA</string>
+    <string name="core_profile">Core profile (no legacy OpenGL, unlocks the full GLSL level)</string>
     <string name="screen_effect">Screen Effect</string>
     <string name="enable_fxaa">Enable FXAA</string>
     <string name="brightness">Brightness</string>

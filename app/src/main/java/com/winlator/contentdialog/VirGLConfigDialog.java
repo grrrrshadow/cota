@@ -24,15 +24,18 @@ public class VirGLConfigDialog extends ContentDialog {
 
         final Spinner sGLVersion = findViewById(R.id.SVersion);
         final CheckBox cbDisableVertexArrayBGRA = findViewById(R.id.CBDisableVertexArrayBGRA);
+        final CheckBox cbCoreProfile = findViewById(R.id.CBCoreProfile);
 
         KeyValueSet config = new KeyValueSet(anchor.getTag());
         AppUtils.setSpinnerSelectionFromIdentifier(sGLVersion, config.get("glVersion", DEFAULT_GL_VERSION));
         cbDisableVertexArrayBGRA.setChecked(config.getBoolean("disableVertexArrayBGRA", true));
+        cbCoreProfile.setChecked(config.getBoolean("coreProfile", false));
 
         setOnConfirmCallback(() -> {
             KeyValueSet newConfig = new KeyValueSet();
             newConfig.put("glVersion", StringUtils.parseNumber(sGLVersion.getSelectedItem()));
             newConfig.put("disableVertexArrayBGRA", cbDisableVertexArrayBGRA.isChecked() ? "1" : "0");
+            newConfig.put("coreProfile", cbCoreProfile.isChecked() ? "1" : "0");
             anchor.setTag(newConfig.toString());
         });
     }
@@ -48,6 +51,11 @@ public class VirGLConfigDialog extends ContentDialog {
         }
 
         if (!mesaExtensionOverride.isEmpty()) envVars.put("MESA_EXTENSION_OVERRIDE", mesaExtensionOverride);
-        envVars.put("MESA_GL_VERSION_OVERRIDE", config.get("glVersion", DEFAULT_GL_VERSION));
+
+        String glVersion = config.get("glVersion", DEFAULT_GL_VERSION);
+        // "FC" makes Mesa hand out a core (forward-compatible) context even when the game asks for a legacy one.
+        // Only then does the virgl guest driver expose the host's full GLSL level; legacy contexts are capped at 3.1.
+        boolean coreProfile = config.getBoolean("coreProfile", false) && Float.parseFloat(glVersion) >= 3.0f;
+        envVars.put("MESA_GL_VERSION_OVERRIDE", coreProfile ? glVersion+"FC" : glVersion);
     }
 }
