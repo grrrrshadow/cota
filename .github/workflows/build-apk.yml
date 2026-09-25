@@ -26,6 +26,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Restore signing key (optional)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            mkdir -p ~/.android
+            printf '%s' "$KEYSTORE_BASE64" | tr -d '\n\r ' | base64 -d > ~/.android/debug.keystore
+            keytool -list -keystore ~/.android/debug.keystore -storepass android | grep -E 'androiddebugkey|SHA-256'
+            echo "SIGNING_NOTE=Signed with the stored key: installs over previous builds signed with the same key." >> "$GITHUB_ENV"
+          else
+            echo "SIGNING_NOTE=Signed with a throwaway key: uninstall the previous Winlator DL before installing." >> "$GITHUB_ENV"
+          fi
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -47,8 +60,7 @@ jobs:
           TAG="build-${GITHUB_RUN_NUMBER}"
           NAME="WinlatorDL-${VERSION}-build${GITHUB_RUN_NUMBER}"
           cp app/build/outputs/apk/debug/app-debug.apk "${NAME}.apk"
-          # Each build is signed with a fresh key: uninstall the previous version before installing.
-          NOTES="Built from ${GITHUB_SHA}. Signed with a throwaway key: uninstall the previous Winlator DL before installing."
+          NOTES="Built from ${GITHUB_SHA}. ${SIGNING_NOTE}"
           if ! gh release view "${TAG}" > /dev/null 2>&1; then
             gh release create "${TAG}" --target "${GITHUB_SHA}" \
               --title "Winlator DL ${VERSION} (build ${GITHUB_RUN_NUMBER})" --notes "${NOTES}"

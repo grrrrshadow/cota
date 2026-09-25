@@ -8,7 +8,7 @@ Kontejner, ve kterém pracuju, se maže. Všechno, co si potřebuju pamatovat, p
 - Ostatní repa (např. `brunodev85/winlator`, `brunodev85/winlator-app`, `brunodev85/vortek`, `brunodev85/gladio`) smím **jen číst**. Nikdy do nich nic nepsat.
 - Uživatel píše česky. Otázky piš normálně textem do chatu (ne přes dialog s možnostmi) a pak skonči.
 - `README.md` je schválně neutrální. Nepsat do něj, co děláme.
-- **Podpisový klíč se neřeší.** Uživatel před každou novou verzí aplikaci odinstaluje a zkouší od nuly. CI podepisuje APK klíčem, který si vygeneruje samo (každý build jiný). Žádný klíč nikdy necommitovat, repo je veřejné. (Uživatel má u sebe soubor „temata s klíčem“ z 25. 9. 2026, ale nepotřebujeme ho.)
+- **Podpisový klíč je v GitHub secretu `SIGNING_KEYSTORE_BASE64`** (uživatel ho tam nahrál 25. 9. 2026, má ho i u sebe v souboru „temata s klíčem“). CI ho použije, když existuje; jinak podepíše dočasným klíčem. Uživatel stejně před každou novou verzí aplikaci odinstaluje. **Žádný klíč nikdy necommitovat, repo je veřejné.** Pro lokální build si klíč vyžádej od uživatele a ulož do `~/.android/debug.keystore` (alias `androiddebugkey`, hesla `android`).
 - Uživatel nesmaže původní Winlator, dokud Winlator DL nebude fungovat na 100 %. Obě aplikace musí jít mít nainstalované současně.
 - Soubory do chatu jdou jen do 30 MB. APK (~150 MB) patří do GitHub Releases (viz CI níže).
 
@@ -36,7 +36,7 @@ Fork Winlatoru 11.2, který jde nainstalovat vedle originálu a má data disku C
 ### CI (hlavní způsob)
 
 - `.github/workflows/build-apk.yml`: při pushi do `main` (změny v `app/**`, gradle souborech nebo ve workflow) nebo ručně (`workflow_dispatch`) sestaví APK a vytvoří release `build-N` s `WinlatorDL-<verze>-buildN.apk`. Uživatel si APK stahuje z GitHub Releases (do chatu se 150 MB nevejde, do repa jako soubor taky ne, limit 100 MB).
-- Žádný secret není potřeba. Opakované spuštění stejného běhu jen nahradí APK v existujícím release.
+- Secret `SIGNING_KEYSTORE_BASE64` je volitelný (viz výše). Opakované spuštění stejného běhu jen nahradí APK v existujícím release. Build 1 (25. 9. 2026) vznikl ještě bez klíče.
 - Commit jen s poznámkami: přidej `[skip ci]` do zprávy (nebo měň jen soubory mimo sledované cesty).
 
 ### Lokálně
