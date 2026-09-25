@@ -4,6 +4,7 @@ import android.content.Context;
 import android.os.Handler;
 
 import com.winlator.R;
+import com.winlator.core.AppUtils;
 import com.winlator.core.Callback;
 import com.winlator.core.FileUtils;
 import com.winlator.core.TarCompressorUtils;
@@ -15,6 +16,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.concurrent.Executors;
@@ -103,6 +105,11 @@ public class ContainerManager {
             File containerDir = new File(homeDir, RootFS.USER+"-"+id);
             if (!containerDir.mkdirs()) return null;
 
+            if (!linkExternalDriveC(containerDir, id)) {
+                FileUtils.delete(containerDir);
+                return null;
+            }
+
             Container container = new Container(id);
             container.setRootDir(containerDir);
             container.loadData(data);
@@ -135,6 +142,14 @@ public class ContainerManager {
             return;
         }
 
+        File srcDriveCDir = getLinkedDriveCDir(srcContainer.getRootDir());
+        if (srcDriveCDir != null) {
+            if (!linkExternalDriveC(dstDir, id) || !FileUtils.copy(srcDriveCDir, getExternalDriveCDir(id))) {
+                FileUtils.delete(dstDir);
+                return;
+            }
+        }
+
         Container dstContainer = new Container(id);
         dstContainer.setRootDir(dstDir);
         dstContainer.setName(srcContainer.getName()+" ("+context.getString(R.string.copy)+")");
@@ -161,7 +176,44 @@ public class ContainerManager {
     }
 
     private void removeContainer(Container container) {
-        if (FileUtils.delete(container.getRootDir())) containers.remove(container);
+        File driveCDir = getLinkedDriveCDir(container.getRootDir());
+        if (FileUtils.delete(container.getRootDir())) {
+            containers.remove(container);
+            if (driveCDir != null) FileUtils.delete(driveCDir);
+        }
+    }
+
+    public static File getExternalDriveCRoot() {
+        return new File(AppUtils.DIRECTORY_DOWNLOADS, "winlator");
+    }
+
+    public static File getExternalDriveCDir(int containerId) {
+        return new File(getExternalDriveCRoot(), "container"+containerId);
+    }
+
+    public static File getLinkedDriveCDir(File containerDir) {
+        File link = new File(containerDir, ".wine/drive_c");
+        if (!FileUtils.isSymlink(link)) return null;
+        File target = new File(FileUtils.readSymlink(link));
+        return getExternalDriveCRoot().equals(target.getParentFile()) ? target : null;
+    }
+
+    private static boolean linkExternalDriveC(File containerDir, int containerId) {
+        File driveCDir = getExternalDriveCDir(containerId);
+        if (!driveCDir.isDirectory() && !driveCDir.mkdirs()) return false;
+
+        File noMediaFile = new File(getExternalDriveCRoot(), ".nomedia");
+        try {
+            if (!noMediaFile.exists()) noMediaFile.createNewFile();
+        }
+        catch (IOException e) {}
+
+        File wineDir = new File(containerDir, ".wine");
+        if (!wineDir.isDirectory() && !wineDir.mkdirs()) return false;
+
+        File link = new File(wineDir, "drive_c");
+        FileUtils.symlink(driveCDir, link);
+        return FileUtils.isSymlink(link);
     }
 
     public ArrayList<Shortcut> loadShortcuts(Shortcut selectedFolder) {

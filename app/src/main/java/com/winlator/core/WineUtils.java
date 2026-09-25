@@ -3,6 +3,7 @@ package com.winlator.core;
 import android.content.Context;
 
 import com.winlator.container.Container;
+import com.winlator.container.ContainerManager;
 import com.winlator.container.Drive;
 import com.winlator.win32.MSLogFont;
 import com.winlator.win32.WinVersions;
@@ -248,15 +249,23 @@ public abstract class WineUtils {
         String dosPath = "";
         String driveLetter = "";
 
-        for (Drive drive : container.drivesIterator()) {
-            if (unixPath.startsWith(drive.path)) {
-                driveLetter = drive.letter+":";
-                dosPath = unixPath.substring(drive.path.length()).replace("/", "\\");
-                break;
+        File driveCDir = ContainerManager.getLinkedDriveCDir(container.getRootDir());
+        boolean isExternalDriveC = driveCDir != null && (unixPath+"/").startsWith(driveCDir.getPath()+"/");
+        if (isExternalDriveC) {
+            driveLetter = "C:";
+            dosPath = unixPath.substring(driveCDir.getPath().length()).replace("/", "\\");
+        }
+        else {
+            for (Drive drive : container.drivesIterator()) {
+                if (unixPath.startsWith(drive.path)) {
+                    driveLetter = drive.letter+":";
+                    dosPath = unixPath.substring(drive.path.length()).replace("/", "\\");
+                    break;
+                }
             }
         }
 
-        if (dosPath.isEmpty()) {
+        if (dosPath.isEmpty() && !isExternalDriveC) {
             int index = unixPath.indexOf("/.wine/drive_c");
             if (index != -1) {
                 driveLetter = "C:";

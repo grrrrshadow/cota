@@ -13,6 +13,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.Enumeration;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -82,11 +83,11 @@ public abstract class ZipUtils {
                 }
                 else {
                     if (entry.isUnixSymlink()) {
-                        FileUtils.symlink(zipFile.getUnixSymlink(entry), file.getAbsolutePath());
+                        FileUtils.symlink(DataDirPatchOutputStream.patch(zipFile.getUnixSymlink(entry)), file.getAbsolutePath());
                     }
                     else {
                         try (InputStream inStream = zipFile.getInputStream(entry);
-                            BufferedOutputStream outStream = new BufferedOutputStream(new FileOutputStream(file), StreamUtils.BUFFER_SIZE)) {
+                            OutputStream outStream = new DataDirPatchOutputStream(new BufferedOutputStream(new FileOutputStream(file), StreamUtils.BUFFER_SIZE))) {
                             if (!StreamUtils.copy(inStream, outStream)) return false;
                         }
                     }

@@ -44,7 +44,11 @@ import java.util.TimerTask;
 
 public abstract class AppUtils {
     public static final String DIRECTORY_DOWNLOADS = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).getPath();
-    public static final String INTERNAL_STORAGE = "/data/data/com.winlator/storage";
+    // Must match applicationId and stay as long as "com.winlator": prebuilt binaries are patched in place.
+    public static final String PACKAGE_NAME = "org.winlator";
+    public static final String ORIGINAL_DATA_DIR = "/data/data/com.winlator/";
+    public static final String DATA_DIR = "/data/data/"+PACKAGE_NAME+"/";
+    public static final String INTERNAL_STORAGE = DATA_DIR+"storage";
     private static WeakReference<Toast> globalToastReference = null;
 
     public static class RestartApplicationOptions {
