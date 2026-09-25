@@ -758,7 +758,13 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             case GraphicsDrivers.ZINK:
                 envVars.put("GALLIUM_DRIVER", "zink");
                 envVars.put("ZINK_CONTEXT_THREADED", "1");
-                if (graphicsDriver[0].equals(GraphicsDrivers.VORTEK)) envVars.put("MESA_GL_VERSION_OVERRIDE", "3.3");
+                // A user-set MESA_GL_VERSION_OVERRIDE wins; "real" drops it so zink reports what the Vulkan driver supports.
+                if ("real".equalsIgnoreCase(envVars.get("MESA_GL_VERSION_OVERRIDE"))) {
+                    envVars.remove("MESA_GL_VERSION_OVERRIDE");
+                }
+                else if (graphicsDriver[0].equals(GraphicsDrivers.VORTEK) && !envVars.has("MESA_GL_VERSION_OVERRIDE")) {
+                    envVars.put("MESA_GL_VERSION_OVERRIDE", "3.3");
+                }
 
                 if (changed) TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/zink-"+DefaultVersion.ZINK+".tzst", rootDir);
                 break;
