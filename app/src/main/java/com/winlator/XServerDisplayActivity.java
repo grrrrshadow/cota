@@ -51,6 +51,7 @@ import com.winlator.core.FileUtils;
 import com.winlator.core.GeneralComponents;
 import com.winlator.core.KeyValueSet;
 import com.winlator.core.LocaleHelper;
+import com.winlator.core.PortableAppsLauncherState;
 import com.winlator.core.PreloaderDialog;
 import com.winlator.core.ProcessHelper;
 import com.winlator.core.StringUtils;
@@ -469,6 +470,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         WineStartMenuCreator.create(this, container);
         WineUtils.createDosdevicesSymlinks(container, true);
+        PortableAppsLauncherState.removeStale(container);
 
         String startupSelection = String.valueOf(container.getStartupSelection());
         if (!startupSelection.equals(container.getExtra("startupSelection")) || wineprefixWasUpdated) {

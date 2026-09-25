@@ -34,6 +34,9 @@ jobs:
             mkdir -p ~/.android
             printf '%s' "$KEYSTORE_BASE64" | tr -d '\n\r ' | base64 -d > ~/.android/debug.keystore
             keytool -list -keystore ~/.android/debug.keystore -storepass android | grep -E 'androiddebugkey|SHA-256'
+            # The runner sets XDG_CONFIG_HOME, so AGP would look for the debug keystore there instead.
+            echo "ANDROID_USER_HOME=$HOME/.android" >> "$GITHUB_ENV"
+            echo "EXPECTED_CERT_SHA256=$(keytool -exportcert -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey | sha256sum | cut -d' ' -f1)" >> "$GITHUB_ENV"
             echo "SIGNING_NOTE=Signed with the stored key: installs over previous builds signed with the same key." >> "$GITHUB_ENV"
           else
             echo "SIGNING_NOTE=Signed with a throwaway key: uninstall the previous Winlator DL before installing." >> "$GITHUB_ENV"
@@ -51,6 +54,17 @@ jobs:
 
       - name: Build
         run: bash gradlew --no-daemon assembleDebug
+
+      - name: Check signing key
+        if: env.EXPECTED_CERT_SHA256 != ''
+        run: |
+          ACTUAL=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          echo "expected ${EXPECTED_CERT_SHA256}"
+          echo "actual   ${ACTUAL}"
+          if [ "${ACTUAL}" != "${EXPECTED_CERT_SHA256}" ]; then
+            echo "::error::APK is not signed with the stored key"
+            exit 1
+          fi
 
       - name: Publish release
         env:

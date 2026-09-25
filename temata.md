@@ -11,6 +11,7 @@ Kontejner, ve kterém pracuju, se maže. Všechno, co si potřebuju pamatovat, p
 - **Podpisový klíč je v GitHub secretu `SIGNING_KEYSTORE_BASE64`** (uživatel ho tam nahrál 25. 9. 2026, má ho i u sebe v souboru „temata s klíčem“). CI ho použije, když existuje; jinak podepíše dočasným klíčem. Uživatel stejně před každou novou verzí aplikaci odinstaluje. **Žádný klíč nikdy necommitovat, repo je veřejné.** Pro lokální build si klíč vyžádej od uživatele a ulož do `~/.android/debug.keystore` (alias `androiddebugkey`, hesla `android`).
 - Uživatel nesmaže původní Winlator, dokud Winlator DL nebude fungovat na 100 %. Obě aplikace musí jít mít nainstalované současně.
 - Soubory do chatu jdou jen do 30 MB. APK (~150 MB) patří do GitHub Releases (viz CI níže).
+- **Dělej jen to, co uživatel chce, nic navíc.** Když řekne „odstraň hlášku“, odstraň hlášku, neměň chování okolo. **Exit je Exit:** zabije všechno a nic dalšího nedělá (žádné „slušné zavírání“ programů). **Nic nespouštět automaticky.** Odpovídej krátce.
 
 ## Projekt: Winlator DL
 
@@ -81,6 +82,13 @@ bash gradlew --no-daemon --max-workers=2 assembleDebug   # při 429 z Maven Cent
 - **Známé omezení:** obě aplikace používají stejné pevné UDP porty na 127.0.0.1 (WinHandler 7946/7947, winebus 7949, MIDI 7950). **Nespouštět kontejner v obou aplikacích současně**, jinak si kradou ovladač, správce úloh a MIDI. Neřešeno.
 - Známé omezení: přejmenování jen změnou velikosti písmen (např. `hra` → `Hra`) na C: nic neudělá, sdílené úložiště nerozlišuje velikost písmen. Neřešeno.
 - Po odinstalaci zůstane `Download/winlator/containerN`. Nový kontejner se stejným číslem data převezme (soubory uživatele zůstanou, systémové soubory Windows se přepíšou šablonou). Záměr: hry přežijí přeinstalaci. Když chce uživatel čistý start, musí složku smazat ručně.
+
+- **CI podepisovalo buildy 2–5 náhodným klíčem**, ne klíčem ze secretu: runner má nastavené `XDG_CONFIG_HOME` a AGP pak hledá debug keystore tam. Oprava: `ANDROID_USER_HOME=$HOME/.android` v `GITHUB_ENV` a krok „Check signing key“, který build zastaví, když otisk APK nesedí s klíčem ze secretu. Ověřeno stažením buildu 5 (`caf2d9…` místo `0ce6ee…`).
+
+## Hláška PortableApps „did not close properly“ (25. 9. 2026)
+
+- Hlásí ji spouštěč PortableApps.com (např. `D:\0exewin\TotalCommanderPortable\TotalCommanderPortable.exe`), ne Windows ani Wine. Za běhu si drží `Data\PortableApps.comLauncherRuntimeData-<AppID>.ini`. Když Winlator při Exit programy zabije, soubor zůstane a příští start jen ukáže hlášku a skončí.
+- Řešení (přání uživatele: jen odstranit hlášku, Exit neměnit): `core/PortableAppsLauncherState.removeStale()` při startu kontejneru (`setupWineSystemFiles`) projde C: a všechny disky do hloubky 2 složek a smaže tyhle soubory ze složek `Data`. Úklid spouštěče (obnova registru apod.) se tím přeskočí, uživatel to tak chce.
 
 ## Průzkum OpenGL v kódu (25. 9. 2026)
 
