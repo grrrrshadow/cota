@@ -36,8 +36,8 @@ Fork Winlatoru 11.2, který jde nainstalovat vedle originálu a má data disku C
 
 ### CI (hlavní způsob)
 
-- `.github/workflows/build-apk.yml`: při pushi do `main` (změny v `app/**`, gradle souborech nebo ve workflow) nebo ručně (`workflow_dispatch`) sestaví APK a vytvoří release `build-N` s `WinlatorDL-<verze>-buildN.apk`. Uživatel si APK stahuje z GitHub Releases (do chatu se 150 MB nevejde, do repa jako soubor taky ne, limit 100 MB).
-- Secret `SIGNING_KEYSTORE_BASE64` je volitelný (viz výše). Opakované spuštění stejného běhu jen nahradí APK v existujícím release. Build 1 (25. 9. 2026) vznikl ještě bez klíče.
+- `.github/workflows/build-apk.yml`: při pushi do `main` (změny v `app/**`, gradle souborech nebo ve workflow) nebo ručně (`workflow_dispatch`) sestaví APK. **APK je artefakt běhu Actions** (`actions/upload-artifact`, jméno `WinlatorDL-buildN`), ne Release. Uživatel si ho najde na stránce běhu v záložce Actions dole v „Artifacts“. Přání uživatele: nechat to jako artefakty, ne dělat Releases. (Artefakt je zip, retence 90 dní.)
+- Secret `SIGNING_KEYSTORE_BASE64` je volitelný (viz výše). Build 1 (25. 9. 2026) vznikl ještě bez klíče. Releases build-1 až build-7 zůstaly z dřívějška, novější buildy už jdou jen do artefaktů.
 - Commit jen s poznámkami: přidej `[skip ci]` do zprávy (nebo měň jen soubory mimo sledované cesty).
 
 ### Lokálně

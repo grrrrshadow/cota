@@ -12,9 +12,6 @@ on:
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 concurrency:
   group: build-apk
   cancel-in-progress: false
@@ -66,17 +63,14 @@ jobs:
             exit 1
           fi
 
-      - name: Publish release
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Name the APK
         run: |
           VERSION=$(sed -n 's/.*versionName "\(.*\)".*/\1/p' app/build.gradle)
-          TAG="build-${GITHUB_RUN_NUMBER}"
-          NAME="WinlatorDL-${VERSION}-build${GITHUB_RUN_NUMBER}"
-          cp app/build/outputs/apk/debug/app-debug.apk "${NAME}.apk"
-          NOTES="Built from ${GITHUB_SHA}. ${SIGNING_NOTE}"
-          if ! gh release view "${TAG}" > /dev/null 2>&1; then
-            gh release create "${TAG}" --target "${GITHUB_SHA}" \
-              --title "Winlator DL ${VERSION} (build ${GITHUB_RUN_NUMBER})" --notes "${NOTES}"
-          fi
-          gh release upload "${TAG}" "${NAME}.apk" --clobber
+          cp app/build/outputs/apk/debug/app-debug.apk "WinlatorDL-${VERSION}-build${GITHUB_RUN_NUMBER}.apk"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WinlatorDL-build${{ github.run_number }}
+          path: WinlatorDL-*.apk
+          if-no-files-found: error
