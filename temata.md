@@ -106,8 +106,14 @@ bash gradlew --no-daemon --max-workers=2 assembleDebug   # při 429 z Maven Cent
   - Pro Mali (telefony uživatele) nejvíc slibuje zkusit, co Zink přes Vortek na Mali-G615 reálně nahlásí. **Od buildu 5:** proměnná `MESA_GL_VERSION_OVERRIDE` z nastavení kontejneru má u Zinku přednost před pevným 3.3; hodnota `real` ji úplně odstraní, takže Zink nahlásí skutečnou verzi (`XServerDisplayActivity`, větev `GraphicsDrivers.ZINK`).
 - Neprozkoumáno (došly kredity): hlubší VirGL (host vs. nový virglrenderer), strana Wine a her, jiné forky Winlatoru se zdroji.
 
+## Total Commander pro Android, A7Zip, instalace (5. 10. 2026)
+
+- Uživatel poslal `a7zip21src.zip` s tím, že chce v TC: pryč boční rychlo-posuvník (s vypínačem v nastavení), AMOLED černé pozadí, jemně šedé písmo, odblokovat instalaci APK. **A7Zip je jen archivační plugin TC** (`org.ghisler.a7zip`, `org.ghisler.tcpacker.PluginService`, 7zip přes JNI) + testovací obrazovka se 4 tlačítky. Žádný seznam souborů, posuvník, motiv ani instalace. **Samotný TC pro Android je closed source**, zdroják nikde není → ty úpravy udělat nejde. Uživatel to ví.
+- Instalace APK: Google v 2022 donutil Ghislera vyhodit instalaci APK z verze na Play. **Neomezená verze** je v Ghislerově F-Droid repu: `https://raw.githubusercontent.com/chrisgch/tca/master/fdroid/repo`, fingerprint `3576596CECDD70488D61CFD90799A49B7FFD26A81A8FEF1BADEC88D069FA72C1`. Soubor `tcandroid-down362d-universal.apk` (3.62d, univerzální, má `REQUEST_INSTALL_PACKAGES`). Uživateli poslán. Uživatel nechce APKPure (přebaluje), F-Droid/oficiální zdroj je OK.
+- Otevřené: vypínač bočního posuvníku a vlastní barvy jsou možná v nastavení TC (Configuration) — neověřeno, nápovědu jsem neprošel.
+- Instalace Winlator DL: Android hlásí „aplikace byla vytvořena pro starší verzi systému“ (targetSdk 28). Je to správně, **targetSdk zvedat nesmím** (novější target zakazuje spouštět binárky z dat aplikace → Wine/Box64 by nešel). Uživatel ví, že má dát „Přesto nainstalovat“.
+
 ## Stav a otevřené věci
 
-- Winlator DL zatím nikdo nezkoušel na telefonu. Čekám na zpětnou vazbu uživatele.
-- Neznámý telefon a GPU uživatele.
+- Uživatel teď Winlator DL zkouší na **Redmi A5** (3 GB RAM, slabý; náhrada za Edge 60 Fusion v servisu cca 2 měsíce). Cílový telefon zůstává Edge 60 Fusion. Čekám na zpětnou vazbu, **nic nebuildit, dokud neřekne**.
 - Možná rizika: Wine s diskem C: na sdíleném úložišti (FUSE) může být pomalejší při startu her.
