@@ -117,3 +117,35 @@ bash gradlew --no-daemon --max-workers=2 assembleDebug   # při 429 z Maven Cent
 
 - Uživatel teď Winlator DL zkouší na **Redmi A5** (3 GB RAM, slabý; náhrada za Edge 60 Fusion v servisu cca 2 měsíce). Cílový telefon zůstává Edge 60 Fusion. Čekám na zpětnou vazbu, **nic nebuildit, dokud neřekne**.
 - Možná rizika: Wine s diskem C: na sdíleném úložišti (FUSE) může být pomalejší při startu her.
+
+## Vzkaz z chatu OpenTTD Decouple (13. 10. 2026): OpenTTD a OpenGL ve Winlatoru
+
+Psal to druhý chat (repo `grrrrshadow/forclaude`, PR #1). Uživatel chce hru nechat ve vanilla stavu OpenGL a dělat lepší OpenGL ve Winlatoru; zatím hraje s **VirGL 4.0**, se kterým hra naběhne.
+
+### Co se dělo a co z toho bylo naše
+
+- Kontejner uživatele: 1280x720, Vulkan **Vortek**, OpenGL **Gladio** (výchozí), DXVK, VKD3D, ALSA. Hra bez nastavení bere 75 % obrazovky = okno **960x540**, blitter **40bpp-anim**, driver **win32-opengl**.
+- První start po založení `openttdDecouple.cfg`: černé okno, po 7 až 22 s EXCEPTION_ACCESS_VIOLATION, prázdný stacktrace, `.dmp` 0 bajtů. Hra si před zkouškou OpenGL zapíše `hwaccel.dat` a smaže ho po prvním snímku; druhý start ho najde, ukáže „GPU driver crashed the game. Hardware acceleration disabled“, zapíše `video_hw_accel = false` do cfg a jede na GDI. Proto „napodruhé vždy najede“. Znovu zkusit OpenGL: `video_hw_accel = true` v cfg.
+- **Byla to (aspoň zčásti) chyba hry, ne Gladia:** náš Decouple má úroveň zoomu 16x, a když je vypnutá, načítání spritů jí nechá jen velikost bez pixelů. Vanilla OpenGL kód kurzoru (`OpenGLSprite`) ty pixely čte → segfault při **prvním snímku** (před prvním `Paint`, proto černé okno a `hwaccel.dat` zůstal). Reprodukováno na Linuxu s Mesa llvmpipe, opraveno v forclaude (commit „OpenGL: the cursor sprites crashed the game…“). Vanilla OpenTTD tuhle chybu nemá; co psala vanilla na Gladiu, nevíme přesně.
+- Nová verze hry píše do crash logu `crash.trace` (posledních 48 značek s časem od startu: okno, OpenGL kontext, velikost, sprity, první snímek...) a `os.wine` verzi Wine. Příští `crash*.json.log` ze složky hry řekne, u kterého kroku to umřelo.
+
+### Co OpenTTD od OpenGL chce (`openttd/src/video/opengl.cpp`, `win32_v.cpp`, `table/opengl_shader.h`) — pro lepší OpenGL ve Winlatoru
+
+- **Kontext:** `wglCreateContextAttribsARB` nejdřív 4.5 core profile, když null tak 3.2 core profile, jinak starý `wglCreateContext`. S `-d driver=8` navíc debug kontext a `glDebugMessageCallback(ARB)`.
+- **Verze:** na Windows odmítne cokoli pod **3.2** (spadne na GDI, nepadá). Renderer string začínající `llvmpipe`/`softpipe` odmítne. Rozšíření čte přes `glGetStringi(GL_EXTENSIONS, i)`.
+- **Nutné:** NPOT textury, `GL_R8`/`GL_RED` textury (ARB_texture_rg), VBO, **PBO** (`GL_PIXEL_UNPACK_BUFFER`) + `glMapBuffer(GL_READ_WRITE)`/`glUnmapBuffer`, VAO, shadery, `glBindFragDataLocation` (u 3.2 nutné). `GL_MAX_TEXTURE_SIZE` ≥ větší rozměr okna, `GL_MAX_TEXTURE_IMAGE_UNITS` ≥ 4.
+- **Když je driver nahlásí, hra je použije (Gladio hlásí obě):** `GL_ARB_buffer_storage` → `glBufferStorage(... PERSISTENT | COHERENT | CLIENT_STORAGE)` + trvale namapovaný `glMapBufferRange` + `GL_ARB_sync` (`glFenceSync`/`glClientWaitSync`/`glDeleteSync`). `GL_ARB_clear_buffer_object` → `glClearBufferSubData` (Gladio nehlásí, hra místo toho PBO namapuje a vyplní). **Nahlášené a nedodělané rozšíření = pád nebo rozbitý obraz.**
+- **Textury:** obraz `GL_TEXTURE_2D` `GL_RGBA8` velikosti okna, nahrávání **`GL_BGRA` + `GL_UNSIGNED_INT_8_8_8_8_REV`** s `GL_UNPACK_ROW_LENGTH = pitch`, data z PBO (ukazatel = offset), každý snímek `glTexSubImage2D` špinavého obdélníku. Blitter 8bpp: `GL_R8`/`GL_RED`/`GL_UNSIGNED_BYTE`. Blitter **40bpp-anim** (výchozí s 32bpp sadou): druhá textura `GL_R8` (animační vrstva) + druhé PBO. **Paleta: `GL_TEXTURE_1D`** `GL_RGBA8` 256 přes `glTexImage1D`/`glTexSubImage1D`, v shaderu `sampler1D`. Kurzor: `GL_TEXTURE_2D` s mip úrovní na každý zoom (`glTexImage2D` level i, `GL_TEXTURE_MAX_LEVEL`), 1x1 náhradní textury.
+- **Shadery:** při 3.2+ GLSL **`#version 150`** (`in`/`out`, `out vec4 colour` + `glBindFragDataLocation`), jinak `#version 110`. Samplery 2D i **1D**, `textureLod`. Kreslí `glBindVertexArray` + `glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)`, `glClear`, `glBlendFunc`, `glActiveTexture` 0..3.
+
+### Co jsem viděl v Gladiu (zdroj `app/src/main/cpp/gladiorenderer`, guest `libGL.so.1.7.0` v `gladio-1.1.tzst`)
+
+- Guest exportuje všechno, co hra volá (`glTexImage1D`, `glMapBuffer`, `glMapBufferRange`, `glBufferStorage`, `glGetStringi`, `glFenceSync`, `glClientWaitSync`, `glBindFragDataLocation`...). `shader_converter.c` mapuje `sampler1D` → `sampler2D`. Host hlásí 3.3 / GLSL 3.30 a v `gl_context.c:536` i `GL_ARB_buffer_storage`, `GL_ARB_sync`, `GL_ARB_map_buffer_range`.
+- **`sizeofGLType()` v `gladio.h` nezná `GL_UNSIGNED_INT_8_8_8_8_REV`** (vrací 0) → nahrání textur hry může skončit prázdné (černý nebo nesmyslný obraz) i bez pádu. Na little-endianu je `GL_BGRA` + `8_8_8_8_REV` totéž co `GL_BGRA` + `GL_UNSIGNED_BYTE`, stačí to v tabulce typů přidat jako 4 bajty.
+- PBO host emuluje: `glBufferStorage` pro `GL_PIXEL_UNPACK_BUFFER` jen alokuje ashmem (fd guestovi), `glTexSubImage2D` pak čte `pixelUnpackBuffer->mappedData + offset`. Zda guest umí `glMapBuffer(GL_READ_WRITE)` a trvalé `glMapBufferRange` nad tím, jsem z binárky nepoznal — to je první věc k ověření, když hra na Gladiu bude kreslit špatně.
+- Limity Gladia hře stačí (8 texturovacích jednotek, max textura 4096).
+
+### Jak to zkoušet
+
+- `openttd.exe -v win32-opengl -d driver=8` (debug kontext, GL hlášky do konzole/logu), `-b 32bpp-optimized` (bez animační textury), `-v win32` = GDI pro srovnání. V cfg `video_hw_accel = true`, jinak hra OpenGL vůbec nezkusí.
+- Nejdřív nový build hry (s opravou kurzoru): na Gladiu se uvidí, jestli zbyl ještě nějaký problém Gladia; na VirGL 4.0 hra jede.
