@@ -327,7 +327,7 @@ struct vrend_context *vrend_lookup_renderer_ctx(struct virgl_client *client, uin
 
 int vrend_renderer_create_fence(struct virgl_client *client, int client_fence_id, uint32_t ctx_id);
 
-void vrend_renderer_check_fences(struct virgl_client *client);
+void vrend_renderer_check_fences(struct virgl_client *client, bool wait);
 
 bool vrend_hw_switch_context(struct vrend_context *ctx, bool now);
 uint32_t vrend_renderer_object_insert(struct vrend_context *ctx, void *data,
@@ -363,6 +363,7 @@ vrend_resource_reference(struct vrend_resource **ptr, struct vrend_resource *tex
 }
 
 void vrend_renderer_force_ctx_0(struct virgl_client *client);
+void vrend_renderer_switch_ctx_0(struct virgl_client *client);
 
 void vrend_renderer_attach_res_ctx(struct virgl_client *client, int ctx_id, int resource_id);
 
