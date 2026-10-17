@@ -169,6 +169,8 @@ public class Texture {
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureId);
         boolean reallocate = sourceId != copySourceId || width != copyWidth || height != copyHeight;
         if (!reallocate) {
+            // the VirGL host never reads GL errors, so one it left in this context must not count as this copy's
+            for (int i = 0; i < 8 && GLES20.glGetError() != GLES20.GL_NO_ERROR; i++);
             GLES20.glCopyTexSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
             // a driver may refuse the copy into storage it made from a BGRA source: reallocate as before
             reallocate = GLES20.glGetError() != GLES20.GL_NO_ERROR;

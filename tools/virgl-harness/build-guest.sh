@@ -9,10 +9,12 @@ WORK=${WORK:-/tmp/virgl-harness}
 mkdir -p "$WORK"
 cd "$WORK"
 [ -x venv/bin/meson ] || { python3 -m venv venv && venv/bin/pip install -q "meson==1.4.1" "mako==1.3.5"; }
+# The commit the measurements in the commit messages were made with; MESA3D_CUSTOM_REV=origin/HEAD for the newest
+REV=${MESA3D_CUSTOM_REV:-fa711f80c79a7fc04e5cc5438542b5c3692ddcba}
 if [ ! -d mesa3d-custom/virgl-23.1.9 ]; then
   git clone -q --filter=blob:none --no-checkout https://github.com/brunodev85/mesa3d-custom.git mesa3d-custom
   git -C mesa3d-custom sparse-checkout set virgl-23.1.9
-  git -C mesa3d-custom checkout -q
+  git -C mesa3d-custom checkout -q "$REV"
 fi
 echo "mesa3d-custom $(git -C mesa3d-custom rev-parse --short HEAD)"
 # -Dgallium-drivers=virgl,swrast: swrast is softpipe in 23.1 ("softpipe" is not a valid choice there)

@@ -166,7 +166,7 @@ struct drawable_texture {
 #define MAX_DRAWABLES 64
 static struct drawable_texture drawables[MAX_DRAWABLES];
 static Display *x_display;
-static uint64_t total_frames, n_realloc, n_subcopy, n_subcopy_failed, n_gl_errors;
+static uint64_t total_frames, n_realloc, n_subcopy, n_subcopy_failed, n_gl_errors, n_stale_errors;
 static uint64_t stats_every = 1000;
 static uint64_t dump_frame;
 static const char *dump_path;
@@ -248,6 +248,8 @@ static void copy_from_read_buffer_serial(struct drawable_texture *d, int source)
    glBindTexture(GL_TEXTURE_2D, d->texture);
    bool reallocate = source != d->copy_source || d->width != d->copy_width || d->height != d->copy_height;
    if (!reallocate) {
+      for (int i = 0; i < 8 && glGetError() != GL_NO_ERROR; i++)
+         n_stale_errors++;
       glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, d->width, d->height);
       reallocate = glGetError() != GL_NO_ERROR;
       if (reallocate)
@@ -533,7 +535,7 @@ int main(int argc, char **argv)
    }
 
    print_stats();
-   fprintf(stderr, "harness: exit, %llu frames total, %llu GL errors while presenting\n",
-           (unsigned long long)total_frames, (unsigned long long)n_gl_errors);
+   fprintf(stderr, "harness: exit, %llu frames total, %llu GL errors while presenting, %llu left by the renderer\n",
+           (unsigned long long)total_frames, (unsigned long long)n_gl_errors, (unsigned long long)n_stale_errors);
    return 0;
 }

@@ -27,6 +27,7 @@ public class TextureCopyTest {
     public static class RecordingGLES20 {
         static final List<String> calls = new ArrayList<>();
         static int nextError = GLES20.GL_NO_ERROR;
+        static boolean rejectSubCopy = false;
         private static int lastTextureId = 0;
 
         @Implementation
@@ -42,6 +43,7 @@ public class TextureCopyTest {
         @Implementation
         protected static void glCopyTexSubImage2D(int target, int level, int xoffset, int yoffset, int x, int y, int width, int height) {
             calls.add("sub " + width + "x" + height);
+            if (rejectSubCopy) nextError = GLES20.GL_INVALID_OPERATION;
         }
 
         @Implementation
@@ -61,6 +63,7 @@ public class TextureCopyTest {
     public void reset() {
         RecordingGLES20.calls.clear();
         RecordingGLES20.nextError = GLES20.GL_NO_ERROR;
+        RecordingGLES20.rejectSubCopy = false;
     }
 
     @Test
@@ -86,10 +89,21 @@ public class TextureCopyTest {
     public void rejectedCopyFallsBackToReallocating() {
         Texture texture = new Texture(null);
         texture.copyFromReadBuffer((short)640, (short)480, 7);
-        RecordingGLES20.nextError = GLES20.GL_INVALID_OPERATION;
+        RecordingGLES20.rejectSubCopy = true;
         texture.copyFromReadBuffer((short)640, (short)480, 7);
+        RecordingGLES20.rejectSubCopy = false;
         texture.copyFromReadBuffer((short)640, (short)480, 7);
         assertCalls("image 640x480", "sub 640x480", "image 640x480", "sub 640x480");
+    }
+
+    @Test
+    public void errorLeftByTheHostDoesNotReallocate() {
+        Texture texture = new Texture(null);
+        texture.copyFromReadBuffer((short)640, (short)480, 8);
+        // an error from an earlier native GL call in the same context, never read there
+        RecordingGLES20.nextError = GLES20.GL_INVALID_ENUM;
+        texture.copyFromReadBuffer((short)640, (short)480, 8);
+        assertCalls("image 640x480", "sub 640x480");
     }
 
     @Test
