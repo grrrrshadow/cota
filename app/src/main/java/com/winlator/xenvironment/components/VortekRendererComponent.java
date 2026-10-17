@@ -48,10 +48,7 @@ public class VortekRendererComponent extends EnvironmentComponent implements Con
             if (config == null || config.isEmpty()) return new Options();
 
             Options options = new Options();
-            String exposedDeviceExtensions = config.get("exposedDeviceExtensions", "all");
-            if (!exposedDeviceExtensions.isEmpty() && !exposedDeviceExtensions.equals("all")) {
-                options.exposedDeviceExtensions = exposedDeviceExtensions.split("\\|");
-            }
+            options.exposedDeviceExtensions = parseExposedDeviceExtensions(config.get("exposedDeviceExtensions", "all"));
 
             String vkMaxVersion = config.get("vkMaxVersion", VortekConfigDialog.DEFAULT_VK_MAX_VERSION);
             if (!vkMaxVersion.equals(VortekConfigDialog.DEFAULT_VK_MAX_VERSION)) {
@@ -66,6 +63,13 @@ public class VortekRendererComponent extends EnvironmentComponent implements Con
             String adrenotoolsDriver = config.get("adrenotoolsDriver");
             options.libvulkanPath = GeneralComponents.getDefinitivePath(GeneralComponents.Type.ADRENOTOOLS_DRIVER, context, adrenotoolsDriver);
             return options;
+        }
+
+        // VortekConfigDialog joins the names with ':' because '|' already separates the Vulkan and OpenGL configs.
+        // Like the dialog, a value with '|' (older builds) means "all"; null exposes every extension.
+        public static String[] parseExposedDeviceExtensions(String value) {
+            if (value.isEmpty() || value.equals("all") || value.contains("|")) return null;
+            return value.split(":");
         }
     }
 
