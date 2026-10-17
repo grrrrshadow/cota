@@ -149,3 +149,22 @@ Psal to druhý chat (repo `grrrrshadow/forclaude`, PR #1). Uživatel chce hru ne
 
 - `openttd.exe -v win32-opengl -d driver=8` (debug kontext, GL hlášky do konzole/logu), `-b 32bpp-optimized` (bez animační textury), `-v win32` = GDI pro srovnání. V cfg `video_hw_accel = true`, jinak hra OpenGL vůbec nezkusí.
 - Nejdřív nový build hry (s opravou kurzoru): na Gladiu se uvidí, jestli zbyl ještě nějaký problém Gladia; na VirGL 4.0 hra jede.
+
+## 17. 10. 2026: VirGL se v DL neukládá, OpenTTD akcelerace, nástroje pro Linux
+
+- **Hlavní chyba:** ve Winlatoru DL se nastavení VirGL (verze, Core profile) **neuloží ani po fajfce Save ✓** (uživatel ověřil, fajfka je dole). Po návratu je vždy 3.1 bez Core. Proto všechny pokusy s OpenTTD v DL ve skutečnosti běžely na 3.1 a OpenTTD (Windows) chce **≥ 3.2** (`openttd/src/video/opengl.cpp:580`) → „nebyla nalezena kompatibilní grafická karta“. Na původním Winlatoru 10.1 se VirGL 4.0 drží a hra s akcelerací jede (viz vzkaz z 13. 10. výše).
+- Statická kontrola nenašla chybu: `GraphicsDriverPicker`, `VirGLConfigDialog` (OK → `anchor.setTag`), `ContainerDetailFragment` (BTConfirm → `setGraphicsDriverConfig` + `saveData`), `Container.saveData/loadData`, `GraphicsDrivers.parseConfigs` (dělí podle prvního `|`), `KeyValueSet`, `Shortcut` extra data (dělí podle prvního `=`) — vše vypadá správně; JVM test `KeyValueSet`+`parseConfigs` prošel. Vortek už spojuje rozšíření `:` (ne `|`). → **Je potřeba dynamický test:** `app/src/test/java/com/winlator/VirGLConfigPersistTest.java` (Robolectric) projde skutečné UI: picker → dialog VirGL → 4.6 + Core → OK → uložit kontejner → načíst → znovu otevřít dialog. Stav: napsaný, zatím nespuštěný.
+- Uživatel chce **skutečnou příčinu, ne kosmetiku** („musí to fungovat“). Hra má zůstat vanilla v OpenGL, lepší má být Winlator.
+- Gladio podle druhého chatu: `sizeofGLType()` v `gladio.h` nezná `GL_UNSIGNED_INT_8_8_8_8_REV` (OpenTTD jím nahrává textury) → přidat jako 4 bajty. Gladio GLX hlásí jen `GLX_ARB_create_context` (bez `_profile`).
+- Podezření k VirGL bez Core: legacy kontext má v guest Mesa GLSL max 1.40, OpenTTD při ≥3.2 kompiluje shadery `#version 150` → bez Core by to mohlo selhat i při čísle 3.3; s Core (FC) dostane hostovu úroveň (430 na GLES 3.2). Ověřuje workflow `openttd-hwaccel-winlator`.
+
+### Nástroje (uživatel: „vyvíjej v Linuxu a ulož si to do repa, ať nebuildíš pokaždé APK na pokusy“)
+
+- `tools/dev-setup.sh [SDK_DIR]` — po vymazání kontejneru nainstaluje SDK/NDK/CMake a zapíše `local.properties`.
+- `tools/run-tests.sh [--tests '*VirGL*']` — pustí JVM testy (`testDebugUnitTest`, Robolectric) bez stavění APK; log v `build/test-run.log`.
+- Testy jsou v `app/src/test/`. CI (`build-apk.yml`) změny jen v `app/src/test/**` ignoruje. Commity s nástroji/poznámkami dávej s `[skip ci]`.
+
+### CET / CoinEx (uživatel se ptal 17. 10.)
+
+- CoinEx končí (oznámení 2026-09): ne-spot 22. 9., spot 29. 9., **výběry do 22. 12. 2026 02:00 UTC**; CET na účtech automaticky odkoupeno za **0,005 USDT/CET** 29. 9.; CSC + OneSwap ukončeny 29. 9.; oficiální RPC `rpc.coinex.net` 17. 10. vrací 504.
+- Uživatel píše, že mu CET „nuceně prodali za 0,0000005“ — to je 10 000× méně než oficiální cena. Doporučeno zkontrolovat historii aktiv (kolik USDT připsáno) a případně podporu do 22. 12. Hlubší průzkum (přežije CET bez CoinExu, fork?) běží ve workflow `cet-after-coinex`.
