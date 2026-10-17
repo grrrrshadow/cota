@@ -3,9 +3,71 @@ package com.winlator.core;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
 public abstract class CPUStatus {
+    // "implementer:part" from /proc/cpuinfo of the in-order LITTLE cores: Cortex-A35/A53/A55/A510/A520/A520AE, C1-Nano
+    // and the Qualcomm Kryo Silver cores built on them.
+    private static final String[] LITTLE_CPU_PARTS = {"0x41:0xd04", "0x41:0xd03", "0x41:0xd05", "0x41:0xd46", "0x41:0xd80", "0x41:0xd88", "0x41:0xd8a", "0x51:0x801", "0x51:0x803", "0x51:0x805"};
+    private static String bigCoreList;
+
+    /** The cores that are not LITTLE ones, e.g. "4,5,6,7", or null if the CPU has no LITTLE cores or fewer than 4 others. */
+    public static synchronized String getBigCoreList() {
+        if (bigCoreList == null) {
+            byte[] data = FileUtils.read(new File("/proc/cpuinfo"));
+            if (data == null) return null;
+            String cpuinfo = new String(data, StandardCharsets.UTF_8);
+            // /proc/cpuinfo lists only the online cores; ask again later instead of remembering a partial answer.
+            if (countProcessors(cpuinfo) != Runtime.getRuntime().availableProcessors()) return null;
+            String result = parseBigCoreList(cpuinfo);
+            bigCoreList = result != null ? result : "";
+        }
+        return !bigCoreList.isEmpty() ? bigCoreList : null;
+    }
+
+    private static int countProcessors(String cpuinfo) {
+        int count = 0;
+        for (String line : cpuinfo.split("\n")) if (line.startsWith("processor") && line.contains(":")) count++;
+        return count;
+    }
+
+    public static String parseBigCoreList(String cpuinfo) {
+        String bigCoreList = "";
+        int numBigCores = 0;
+        int numProcessors = 0;
+        int numKnownProcessors = 0;
+        String processor = null;
+        String implementer = null;
+
+        for (String line : cpuinfo.split("\n")) {
+            int index = line.indexOf(':');
+            if (index == -1) continue;
+            String key = line.substring(0, index).trim();
+            String value = line.substring(index + 1).trim().toLowerCase(Locale.ENGLISH);
+
+            if (key.equals("processor")) {
+                processor = value;
+                implementer = null;
+                numProcessors++;
+            }
+            else if (key.equals("CPU implementer")) {
+                implementer = value;
+            }
+            else if (key.equals("CPU part") && processor != null && implementer != null) {
+                numKnownProcessors++;
+                if (!ArrayUtils.contains(LITTLE_CPU_PARTS, implementer+":"+value)) {
+                    bigCoreList += (!bigCoreList.isEmpty() ? "," : "")+processor;
+                    numBigCores++;
+                }
+                processor = null;
+            }
+        }
+
+        boolean hasLittleCores = numBigCores < numKnownProcessors;
+        return numProcessors > 0 && numKnownProcessors == numProcessors && hasLittleCores && numBigCores >= 4 ? bigCoreList : null;
+    }
+
     public static short[] getCurrentClockSpeeds() {
         int numProcessors = Runtime.getRuntime().availableProcessors();
         short[] clockSpeeds = new short[numProcessors];

@@ -28,6 +28,7 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
     private static int pid = -1;
     private EnvVars envVars;
     private String box64Preset = Box64Preset.CONSERVATIVE;
+    private int affinityMask = 0;
     private Callback<Integer> terminationCallback;
     private static final Object lock = new Object();
 
@@ -83,6 +84,14 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         this.box64Preset = box64Preset;
     }
 
+    public int getAffinityMask() {
+        return affinityMask;
+    }
+
+    public void setAffinityMask(int affinityMask) {
+        this.affinityMask = affinityMask;
+    }
+
     private int execGuestProgram() {
         RootFS rootFS = environment.getRootFS();
         File rootDir = rootFS.getRootDir();
@@ -107,7 +116,9 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
 
         String command = rootDir+"/usr/local/bin/box64 "+guestExecutable;
 
-        return ProcessHelper.exec(command, envVars, rootDir, (status) -> {
+        // BOX64_MAXCPU/BOX64_SKIPCPU shrink the CPU count Wine sees; an inherited mask such as 0xF0 would then read as an empty one.
+        int affinityMask = envVars.has("BOX64_MAXCPU") || envVars.has("BOX64_SKIPCPU") ? 0 : this.affinityMask;
+        return ProcessHelper.exec(command, envVars, rootDir, affinityMask, (status) -> {
             synchronized (lock) {
                 pid = -1;
             }
@@ -143,7 +154,9 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         envVars.put("BOX64_NOBANNER", box64Logs >= 1 ? "0" : "1");
         envVars.put("BOX64_DYNAREC", "1");
         envVars.put("BOX64_UNITYPLAYER", "0");
-        envVars.put("BOX64_DYNACACHE", "0");
+        // Keep the translated code on disk, so code that ran in an earlier session does not stall the game again.
+        envVars.put("BOX64_DYNACACHE", "1");
+        envVars.put("BOX64_DYNACACHE_LIMIT", "512");
 
         if (box64Logs >= 1) {
             envVars.put("BOX64_LOG", "1");

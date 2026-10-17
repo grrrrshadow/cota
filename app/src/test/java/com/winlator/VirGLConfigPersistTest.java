@@ -15,6 +15,8 @@ import com.winlator.container.Container;
 import com.winlator.container.DXWrapperPicker;
 import com.winlator.container.DXWrappers;
 import com.winlator.container.GraphicsDriverPicker;
+import com.winlator.contentdialog.VirGLConfigDialog;
+import com.winlator.core.EnvVars;
 import com.winlator.core.FileUtils;
 import com.winlator.core.KeyValueSet;
 import com.winlator.widget.TaggedSelectionBox;
@@ -68,7 +70,7 @@ public class VirGLConfigPersistTest {
         Spinner version = dialog.findViewById(R.id.SVersion);
         CheckBox core = dialog.findViewById(R.id.CBCoreProfile);
         assertEquals("3.1", version.getSelectedItem().toString());
-        version.setSelection(indexOf(version, "4.6"));
+        version.setSelection(indexOf(version, "4.3"));
         core.setChecked(true);
         dialog.findViewById(R.id.BTConfirm).performClick();
 
@@ -95,8 +97,25 @@ public class VirGLConfigPersistTest {
         Dialog dialog2 = openVirGLDialog(layout2);
         Spinner version2 = dialog2.findViewById(R.id.SVersion);
         CheckBox core2 = dialog2.findViewById(R.id.CBCoreProfile);
-        assertEquals("4.6", version2.getSelectedItem().toString());
+        assertEquals("4.3", version2.getSelectedItem().toString());
         assertTrue("core profile must stay checked", core2.isChecked());
+    }
+
+    @Test
+    public void versionsAbove43AreCappedForOldContainers() {
+        // Builds before the cap could save 4.4-4.6; virgl has no ARB_buffer_storage, so they must run as 4.3.
+        Context context = themedContext();
+        LinearLayout layout = new LinearLayout(context);
+        new GraphicsDriverPicker(layout, "vortek,virgl", "|glVersion=4.6,disableVertexArrayBGRA=1,coreProfile=1");
+        Dialog dialog = openVirGLDialog(layout);
+        assertEquals("4.3", ((Spinner)dialog.findViewById(R.id.SVersion)).getSelectedItem().toString());
+
+        EnvVars envVars = new EnvVars();
+        VirGLConfigDialog.setEnvVars(new KeyValueSet("glVersion=4.6,coreProfile=1"), envVars);
+        assertEquals("4.3FC", envVars.get("MESA_GL_VERSION_OVERRIDE"));
+        envVars = new EnvVars();
+        VirGLConfigDialog.setEnvVars(new KeyValueSet(""), envVars);
+        assertEquals(VirGLConfigDialog.DEFAULT_GL_VERSION, envVars.get("MESA_GL_VERSION_OVERRIDE"));
     }
 
     @Test

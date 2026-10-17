@@ -2,6 +2,7 @@ package com.winlator.container;
 
 import com.winlator.box64.Box64Preset;
 import com.winlator.core.AppUtils;
+import com.winlator.core.CPUStatus;
 import com.winlator.core.EnvVars;
 import com.winlator.core.FileUtils;
 import com.winlator.core.KeyValueSet;
@@ -426,6 +427,10 @@ public class Container {
     }
 
     public static String getFallbackCPUList() {
+        // Keep games off the LITTLE cores when the CPU has enough big ones.
+        String bigCoreList = CPUStatus.getBigCoreList();
+        if (bigCoreList != null) return bigCoreList;
+
         String cpuList = "";
         int numProcessors = Runtime.getRuntime().availableProcessors();
         for (int i = 0; i < numProcessors; i++) cpuList += (!cpuList.isEmpty() ? "," : "")+i;

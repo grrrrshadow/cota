@@ -68,6 +68,10 @@ public abstract class ProcessHelper {
     }
 
     public static int exec(String command, EnvVars envVars, File workingDir, Callback<Integer> terminationCallback) {
+        return exec(command, envVars, workingDir, 0, terminationCallback);
+    }
+
+    public static int exec(String command, EnvVars envVars, File workingDir, int affinityMask, Callback<Integer> terminationCallback) {
         int pid = -1;
         try {
             ProcessBuilder processBuilder = (new ProcessBuilder(splitCommand(command))).directory(workingDir);
@@ -76,7 +80,15 @@ public abstract class ProcessHelper {
             Map<String, String> environment = processBuilder.environment();
             for (String name : envVars) environment.put(name, envVars.get(name));
 
-            java.lang.Process process = processBuilder.start();
+            // A child starts with the CPU affinity of the thread that forks it, and passes it on to its own children.
+            int oldAffinityMask = affinityMask != 0 ? setThreadAffinityMask(affinityMask) : 0;
+            java.lang.Process process;
+            try {
+                process = processBuilder.start();
+            }
+            finally {
+                if (oldAffinityMask != 0) setThreadAffinityMask(oldAffinityMask);
+            }
             Field pidField = process.getClass().getDeclaredField("pid");
             pidField.setAccessible(true);
             pid = pidField.getInt(process);
@@ -91,6 +103,16 @@ public abstract class ProcessHelper {
         }
         catch (Exception e) {}
         return pid;
+    }
+
+    // Pinning only speeds things up, so a missing native method must not stop the launch.
+    private static int setThreadAffinityMask(int mask) {
+        try {
+            return ThreadAffinity.setMask(mask);
+        }
+        catch (LinkageError e) {
+            return 0;
+        }
     }
 
     private static void createDebugThread(final InputStream inputStream) {

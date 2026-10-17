@@ -1,0 +1,37 @@
+From e0bc89e088547794f8095f820d7bc2c828d58e3c Mon Sep 17 00:00:00 2001
+From: Yang Liu <numbksco@gmail.com>
+Date: Mon, 28 Sep 2026 15:16:46 +0800
+Subject: [PATCH 1/4] [DYNACACHE] Reset in_used and skip to_delete dynablocks
+ on cache load (#4483)
+
+(cherry picked from commit 4238c8eb6fea82fabaa85c17abc550115893ebc3)
+---
+ src/custommem.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/custommem.c b/src/custommem.c
+index d0519984..64f26cbf 100644
+--- a/src/custommem.c
++++ b/src/custommem.c
+@@ -1494,6 +1494,7 @@ int MmaplistAddBlock_internal(mmaplist_t* list, void* map, void* orig, size_t si
+             // first is the address of the dynablock itself, that needs to be adjusted
+             b[0] += delta;
+             dynablock_t* bl = b[0];
++            bl->in_used = 0;
+             // now reloacte the dynablocks, all that need to be adjusted!
+             #define GO(A) if(bl->A) bl->A = ((void*)bl->A)+delta
+             GO(block);
+@@ -1516,8 +1517,8 @@ int MmaplistAddBlock_internal(mmaplist_t* list, void* map, void* orig, size_t si
+                 db_ref = (bl->jmpnext-sizeof(void*)+3*sizeof(void*));
+                 *db_ref = native_next;
+             }
+-            if(bl->gone || !bl->done) {
+-                dynarec_log(LOG_DEBUG, "Skipping stale DynCache block %p for %p (done=%d, gone=%d)\n", bl, bl->x64_addr, bl->done, bl->gone);
++            if(bl->gone || !bl->done || bl->to_delete) {
++                dynarec_log(LOG_DEBUG, "Skipping stale DynCache block %p for %p (done=%d, gone=%d, to_delete=%d)\n", bl, bl->x64_addr, bl->done, bl->gone, bl->to_delete);
+                 p = NEXT_BLOCK((blockmark_t*)p);
+                 continue;
+             }
+-- 
+2.43.0
+

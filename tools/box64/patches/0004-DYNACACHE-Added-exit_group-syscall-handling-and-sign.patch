@@ -1,0 +1,70 @@
+From 4605d53489a6e3f8d636ae0b6f8d0df9d8a7a650 Mon Sep 17 00:00:00 2001
+From: Yang Liu <numbksco@gmail.com>
+Date: Mon, 28 Sep 2026 16:55:38 +0800
+Subject: [PATCH 4/4] [DYNACACHE] Added exit_group syscall handling and
+ signal32 SIG_QUIT handling (#4485)
+
+(cherry picked from commit c4e9a19fc942a58677d3d99a0a47b7fe219e947e)
+---
+ src/emu/x64syscall.c    | 8 +++++++-
+ src/libtools/signal32.c | 4 ++++
+ 2 files changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/src/emu/x64syscall.c b/src/emu/x64syscall.c
+index 3dfb57e8..bb53ce7d 100644
+--- a/src/emu/x64syscall.c
++++ b/src/emu/x64syscall.c
+@@ -50,6 +50,7 @@ typedef struct x64_stack_s x64_stack_t;
+ extern int mkdir(const char *path, mode_t mode);
+ extern int mknod(const char *path, mode_t mode, dev_t dev);
+ extern int chmod(const char *path, mode_t mode);
++void my__exit(x64emu_t* emu, int code);
+ 
+ //int32_t my_getrandom(x64emu_t* emu, void* buf, uint32_t buflen, uint32_t flags);
+ int of_convert(int flag);
+@@ -291,7 +292,6 @@ static const scwrap_t syscallwrap[] = {
+     [228] = {__NR_clock_gettime, 2},
+     [229] = {__NR_clock_getres, 2},
+     [230] = {__NR_clock_nanosleep, 4},
+-    [231] = {__NR_exit_group, 1},
+     #if defined(__NR_epoll_wait) && defined(NOALIGN)
+     [232] = {__NR_epoll_wait, 4},
+     #endif
+@@ -940,6 +940,9 @@ void EXPORT x64Syscall_linux(x64emu_t *emu)
+                 }
+             }
+             break;
++        case 231:   // sys_exit_group
++            my__exit(emu, S_EDI);
++            break;
+         #if !defined(__NR_epoll_wait) || !defined(NOALIGN)
+         case 232:
+             R_RAX = my_epoll_wait(emu, S_EDI, (void*)R_RSI, S_EDX, S_R10d);
+@@ -1343,6 +1346,9 @@ long EXPORT my_syscall(x64emu_t *emu)
+         case 213:
+             return epoll_create(S_ESI);
+         #endif
++        case 231:   // sys_exit_group
++            my__exit(emu, S_ESI);
++            return 0;
+         #if !defined(__NR_epoll_wait) || !defined(NOALIGN)
+         case 232:
+             return my_epoll_wait(emu, S_ESI, (void*)R_RDX, S_ECX, S_R8d);
+diff --git a/src/libtools/signal32.c b/src/libtools/signal32.c
+index ce55c4f7..8c9586c2 100644
+--- a/src/libtools/signal32.c
++++ b/src/libtools/signal32.c
+@@ -697,6 +697,10 @@ int my_sigactionhandler_oldcode_32(x64emu_t* emu, int32_t sig, int simple, sigin
+     }
+     //TODO: SIGABRT generate what?
+     printf_log((sig==10)?LOG_DEBUG:log_minimum, "Signal32 %d: si_addr=%p, TRAPNO=%d, ERR=%d, RIP=%p, prot:%x, mmaped:%d\n", sig, from_ptrv(info2->_sifields._sigfault.__si_addr), sigcontext->uc_mcontext.gregs[I386_TRAPNO], sigcontext->uc_mcontext.gregs[I386_ERR],from_ptrv(sigcontext->uc_mcontext.gregs[I386_EIP]), prot, mmapped);
++    #ifdef DYNAREC
++    if(sig==3)
++        SerializeAllMapping();  // Signal Interupt: it's a good time to serialize the mappings if needed
++    #endif
+     // call the signal handler
+     i386_ucontext_t sigcontext_copy = *sigcontext;
+     // save old value from emu
+-- 
+2.43.0
+
