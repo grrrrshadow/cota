@@ -50,7 +50,8 @@ public class GraphicsDriverPicker {
         StringBuilder graphicsDriverConfig = new StringBuilder();
         for (int i = 0; i < container.getChildCount(); i++) {
             TaggedSelectionBox taggedSelectionBox = (TaggedSelectionBox)container.getChildAt(i);
-            if (graphicsDriverConfig.length() > 0) graphicsDriverConfig.append('|');
+            // Always separate, even after an empty Vulkan config: parseConfigs() can only split on '|'.
+            if (i > 0) graphicsDriverConfig.append('|');
             graphicsDriverConfig.append(taggedSelectionBox.getTag().toString());
         }
         return graphicsDriverConfig.toString();

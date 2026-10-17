@@ -12,8 +12,11 @@ import android.widget.LinearLayout;
 import android.widget.Spinner;
 
 import com.winlator.container.Container;
+import com.winlator.container.DXWrapperPicker;
+import com.winlator.container.DXWrappers;
 import com.winlator.container.GraphicsDriverPicker;
 import com.winlator.core.FileUtils;
+import com.winlator.core.KeyValueSet;
 import com.winlator.widget.TaggedSelectionBox;
 
 import org.json.JSONObject;
@@ -94,5 +97,21 @@ public class VirGLConfigPersistTest {
         CheckBox core2 = dialog2.findViewById(R.id.CBCoreProfile);
         assertEquals("4.6", version2.getSelectedItem().toString());
         assertTrue("core profile must stay checked", core2.isChecked());
+    }
+
+    @Test
+    public void vkd3dConfigSurvivesWhenDirect3DConfigIsEmpty() {
+        Context context = themedContext();
+        GraphicsDriverPicker graphicsDriverPicker = new GraphicsDriverPicker(new LinearLayout(context), "vortek,virgl", "");
+
+        LinearLayout layout = new LinearLayout(context);
+        DXWrapperPicker picker = new DXWrapperPicker(layout, graphicsDriverPicker, "dxvk", "");
+        layout.getChildAt(1).setTag("version=2.14.1,featureLevel=12.1");
+
+        String config = picker.getDXWrapperConfig();
+        System.out.println("dxwrapperConfig: [" + config + "]");
+        KeyValueSet[] configs = DXWrappers.parseConfigs(picker.getDXWrapper(), config);
+        assertEquals("", configs[0].toString());
+        assertEquals("12.1", configs[1].get("featureLevel"));
     }
 }

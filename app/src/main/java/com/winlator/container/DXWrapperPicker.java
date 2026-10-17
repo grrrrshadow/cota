@@ -64,7 +64,8 @@ public class DXWrapperPicker {
         StringBuilder dxwrapperConfig = new StringBuilder();
         for (int i = 0; i < container.getChildCount(); i++) {
             TaggedSelectionBox taggedSelectionBox = (TaggedSelectionBox)container.getChildAt(i);
-            if (dxwrapperConfig.length() > 0) dxwrapperConfig.append('|');
+            // Always separate, even after an empty Direct3D config: parseConfigs() can only split on '|'.
+            if (i > 0) dxwrapperConfig.append('|');
             dxwrapperConfig.append(taggedSelectionBox.getTag().toString());
         }
         return dxwrapperConfig.toString();

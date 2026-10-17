@@ -158,6 +158,14 @@ Psal to druhý chat (repo `grrrrshadow/forclaude`, PR #1). Uživatel chce hru ne
 - Gladio podle druhého chatu: `sizeofGLType()` v `gladio.h` nezná `GL_UNSIGNED_INT_8_8_8_8_REV` (OpenTTD jím nahrává textury) → přidat jako 4 bajty. Gladio GLX hlásí jen `GLX_ARB_create_context` (bez `_profile`).
 - Podezření k VirGL bez Core: legacy kontext má v guest Mesa GLSL max 1.40, OpenTTD při ≥3.2 kompiluje shadery `#version 150` → bez Core by to mohlo selhat i při čísle 3.3; s Core (FC) dostane hostovu úroveň (430 na GLES 3.2). Ověřuje workflow `openttd-hwaccel-winlator`.
 
+### ✅ Příčina nalezena a opravena (17. 10. 2026)
+
+- **Chyba původního Winlatoru 11.2** (ne našich úprav): `GraphicsDriverPicker.getGraphicsDriverConfig()` přidával oddělovač `|` jen když `length() > 0`. Když je nastavení Vulkanu (Vortek/Turnip) prázdné (dialog Vorteku nikdo neotevřel), uložilo se `glVersion=4.6,...` **bez `|`**. `GraphicsDrivers.parseConfigs()` pak pro `vortek,virgl` nepozná, ke kterému API text patří, a vrátí obě prázdná → VirGL zpět na 3.1 bez Core. Stejná chyba v `DXWrapperPicker.getDXWrapperConfig()` (VKD3D feature level se ztrácel, když DXVK nastavení prázdné). Oprava: `if (i > 0) append('|')`. Robolectric test `VirGLConfigPersistTest` (2 testy) ji předtím zopakoval (`expected 4.6 but was 3.1`) a teď prochází.
+- Původní Winlator 10.1 ukládal nastavení jinak (bez dvojice Vulkan|OpenGL), proto tam VirGL 4.0 drží.
+- Kontejnery uložené starým buildem mají nastavení už rozbité → po instalaci nového buildu VirGL nastavit **jednou znovu** a uložit ✓.
+- **Oprava tvrzení:** „na původním Winlatoru s VirGL 4.0 hra jede“ **neznamená, že jede s akcelerací.** OpenTTD po prvním neúspěchu zapíše do `openttdDecouple.cfg` `video_hw_accel = false` a dál jede na GDI bez chybové hlášky (uživatel na to upozornil). **Testovací postup:** před každým pokusem dát v cfg `video_hw_accel = true` (nebo zaškrtnout Hardware acceleration ve hře a restartovat) a po startu zkontrolovat, jestli je pořád zapnutá.
+- 17. 10.: uživatel má **zpátky Motorolu Edge 60 Fusion** ze servisu (+ „novou verzi Winlatoru“ — nevím kterou).
+
 ### Nástroje (uživatel: „vyvíjej v Linuxu a ulož si to do repa, ať nebuildíš pokaždé APK na pokusy“)
 
 - `tools/dev-setup.sh [SDK_DIR]` — po vymazání kontejneru nainstaluje SDK/NDK/CMake a zapíše `local.properties`.
@@ -167,4 +175,4 @@ Psal to druhý chat (repo `grrrrshadow/forclaude`, PR #1). Uživatel chce hru ne
 ### CET / CoinEx (uživatel se ptal 17. 10.)
 
 - CoinEx končí (oznámení 2026-09): ne-spot 22. 9., spot 29. 9., **výběry do 22. 12. 2026 02:00 UTC**; CET na účtech automaticky odkoupeno za **0,005 USDT/CET** 29. 9.; CSC + OneSwap ukončeny 29. 9.; oficiální RPC `rpc.coinex.net` 17. 10. vrací 504.
-- Uživatel píše, že mu CET „nuceně prodali za 0,0000005“ — to je 10 000× méně než oficiální cena. Doporučeno zkontrolovat historii aktiv (kolik USDT připsáno) a případně podporu do 22. 12. Hlubší průzkum (přežije CET bez CoinExu, fork?) běží ve workflow `cet-after-coinex`.
+- Uživatel píše, že mu CET „nuceně prodali za 0,0000005“ — to je 10 000× méně než oficiální cena. Doporučeno zkontrolovat historii aktiv (kolik USDT připsáno) a případně podporu do 22. 12. Výsledek průzkumu: CET na CSC (většina, ~2,44 mld.) je prakticky zmrazené — poslední blok 55 348 421 (29. 9. 03:16 UTC), 52 z 54 validátorů vedeno pod CoinExem (~99 % stake), pokračovat jde jen když CoinEx pustí validátory, nebo hard forkem (vyměnit validátory) — žádnou snahu jsem nenašel. CET ERC-20 na Ethereu (`0x081F67aFA0cCF8c7B17540767BBe95DF2bA8D97F`, 201,1 mil.) běží dál bez CoinExu i bez forku (kontrakt neumí mint ani freeze), ale ~89 % leží v peněžence „CoinEx 48“ a likvidita na DEX ~790 USD. Výběry do 22. 12. 2026 02:00 UTC, pak úschova s poplatkem 5 %/měsíc, nárok přes support@coinex.com do 22. 8. 2028. Pozor na podvodná „nová oznámení“ jménem CoinExu.
