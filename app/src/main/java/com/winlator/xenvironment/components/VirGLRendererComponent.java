@@ -71,8 +71,9 @@ public class VirGLRendererComponent extends EnvironmentComponent implements Conn
         return true;
     }
 
+    /* framebufferSerial changes whenever the native side makes a new framebuffer for another guest resource */
     @Keep
-    private void flushFrontbuffer(int drawableId, int framebuffer) {
+    private void flushFrontbuffer(int drawableId, int framebuffer, int framebufferSerial) {
         Drawable drawable = xServer.drawableManager.getDrawable(drawableId);
         if (drawable == null) return;
 
@@ -80,7 +81,7 @@ public class VirGLRendererComponent extends EnvironmentComponent implements Conn
             drawable.setData(null);
             Texture texture = drawable.getTexture();
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, framebuffer);
-            texture.copyFromReadBuffer(drawable.width, drawable.height);
+            texture.copyFromReadBuffer(drawable.width, drawable.height, framebufferSerial);
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
         }
 

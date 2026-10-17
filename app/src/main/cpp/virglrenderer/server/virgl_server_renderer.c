@@ -540,6 +540,9 @@ int virgl_server_resource_busy_wait(struct virgl_client *client, UNUSED uint32_t
    return 0;
 }
 
+/* Unique across clients: Java keeps a drawable's texture storage while the serial stays the same */
+static int framebuffer_serial;
+
 int virgl_server_flush_frontbuffer(struct virgl_client *client, UNUSED uint32_t length)
 {
    uint32_t recv_buf[2];
@@ -569,10 +572,12 @@ int virgl_server_flush_frontbuffer(struct virgl_client *client, UNUSED uint32_t 
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
       client->renderer->framebuffer = framebuffer;
+      client->renderer->framebuffer_serial = ++framebuffer_serial;
       client->renderer->handle = handle;
    }
 
-   (*jni_info.env)->CallVoidMethod(jni_info.env, jni_info.obj, jni_info.flush_frontbuffer, drawable, client->renderer->framebuffer);
+   (*jni_info.env)->CallVoidMethod(jni_info.env, jni_info.obj, jni_info.flush_frontbuffer, drawable,
+                                   client->renderer->framebuffer, client->renderer->framebuffer_serial);
    return 0;
 }
 

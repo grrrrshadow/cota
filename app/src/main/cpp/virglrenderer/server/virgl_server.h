@@ -47,6 +47,7 @@ struct jni_info {
 struct virgl_server_renderer {
    struct util_hash_table *iovec_hash;
    GLuint framebuffer;
+   int framebuffer_serial;
    int handle;
    int ctx_id;
    int fence_id;

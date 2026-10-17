@@ -134,7 +134,7 @@ Java_com_winlator_xenvironment_components_VirGLRendererComponent_handleNewConnec
    
    jclass cls = (*env)->GetObjectClass(env, obj);
    jni_info.kill_connection = (*env)->GetMethodID(env, cls, "killConnection", "(I)V");
-   jni_info.flush_frontbuffer = (*env)->GetMethodID(env, cls, "flushFrontbuffer", "(II)V");
+   jni_info.flush_frontbuffer = (*env)->GetMethodID(env, cls, "flushFrontbuffer", "(III)V");
    
    return (jlong)virgl_server_handle_new_connection(fd);
 }
