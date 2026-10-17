@@ -166,6 +166,17 @@ Psal to druhý chat (repo `grrrrshadow/forclaude`, PR #1). Uživatel chce hru ne
 - **Oprava tvrzení:** „na původním Winlatoru s VirGL 4.0 hra jede“ **neznamená, že jede s akcelerací.** OpenTTD po prvním neúspěchu zapíše do `openttdDecouple.cfg` `video_hw_accel = false` a dál jede na GDI bez chybové hlášky (uživatel na to upozornil). **Testovací postup:** před každým pokusem dát v cfg `video_hw_accel = true` (nebo zaškrtnout Hardware acceleration ve hře a restartovat) a po startu zkontrolovat, jestli je pořád zapnutá.
 - 17. 10.: uživatel má **zpátky Motorolu Edge 60 Fusion** ze servisu (+ „novou verzi Winlatoru“ — nevím kterou).
 
+### Ověřeno na telefonu + výsledek rozboru OpenTTD (17. 10. 2026)
+
+- **Na Motorole s buildem 10: VirGL + Core → OpenTTD akceleraci zapnul a drží.** První pokus spadl (hra i Winlator), po znovu-zapnutí akcelerace a restartu hry to jelo. Trhání hry zůstalo — uživatel: je to vlastnost hry (Decouple), trhala se už předtím; akcelerace řeší jen kreslení, simulace jede na CPU přes Box64.
+- Rozbor (workflow `openttd-hwaccel-winlator`, ověřeno druhým agentem): Wine 10.10 (z `ntdll.so`), Box64 0.4.4. Wine vždy nabízí `WGL_ARB_create_context(_profile)`, OpenTTD si sám řekne o core 4.5, pak core 3.2, pak legacy. Wine hledá GL funkce nejdřív přes `dlsym`, takže omezené `glXGetProcAddressARB` Gladia nevadí.
+- **VirGL:** libGL = Mesa 23.1.9 gallium **xlib** GLX. `MESA_GL_VERSION_OVERRIDE` nastaví `ctx->Version` pro všechny profily; Mesa pak odmítne žádosti nad tím číslem (`st_manager.c:1031-1037`). 3.1 → obě core žádosti odmítnuty → legacy 3.1 → OpenTTD `opengl.cpp:580`. **3.2–4.3 funguje, Core NENÍ potřeba** (moje dřívější teorie o GLSL 1.40 pro OpenTTD neplatí — ten strop se týká jen aplikací, co tvoří legacy kontext). **4.4+ nedávat:** OpenTTD podle čísla zapne persistent mapping (`opengl.cpp:607`), virgl (hfcv 3) nemá ARB_buffer_storage → `glMapBufferRange` vrátí NULL → „Can't get pointer to screen buffer“. Pokud host hlásí GLSL 310 (ne 430), Mesa vrátí verzi GLSL 0 → pak `MESA_GLSL_VERSION_OVERRIDE=330`.
+- **Zástupce hry má vlastní `graphicsDriverConfig`** a env proměnné, které přebíjí kontejner (`XServerDisplayActivity.java:213, 514`).
+- **Gladio:** podle kódu projde všemi kontrolami Init; selhání až později (nejspíš link shaderů `#version 320 es` na Mali, + `GL_UNSIGNED_INT_8_8_8_8_REV` v `sizeofGLType`). Potřeba chybový text z telefonu: `openttd.exe -v win32-opengl` (MessageBox s důvodem, pak hra skončí) nebo `-d driver=2`.
+- **Zink + Vortek:** na papíře projde (3.3 Core, GLSL 4.60, renderer „zink (Vortek…)“). Riziko: Mali Vulkan musí mít `VK_KHR_timeline_semaphore`; jinak není GL vůbec (zink 22.2.5 nespadne na softpipe). Při rozbitém obraze `MESA_EXTENSION_OVERRIDE=-GL_ARB_buffer_storage`.
+- **Moje chyba z buildu 5:** větev Zinku v `XServerDisplayActivity` (~762) čte `MESA_GL_VERSION_OVERRIDE` dřív, než se sloučí proměnné kontejneru (~513), takže uživatelskou hodnotu nikdy nevidí; hodnota kontejneru pak 3.3 stejně přepíše. `real` „funguje“ jen proto, že ho Mesa odmítne jako neplatné. Uklidit (nebo vrátit), až bude čas.
+- Navrženo uživateli (čeká na souhlas): výchozí VirGL 3.1 → **3.3** + varování u 4.4+; PR Brunovi jen s opravou `|`.
+
 ### Nástroje (uživatel: „vyvíjej v Linuxu a ulož si to do repa, ať nebuildíš pokaždé APK na pokusy“)
 
 - `tools/dev-setup.sh [SDK_DIR]` — po vymazání kontejneru nainstaluje SDK/NDK/CMake a zapíše `local.properties`.
