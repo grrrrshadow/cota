@@ -7,6 +7,7 @@ import android.widget.LinearLayout;
 import com.winlator.contentdialog.TurnipConfigDialog;
 import com.winlator.contentdialog.VirGLConfigDialog;
 import com.winlator.contentdialog.VortekConfigDialog;
+import com.winlator.contentdialog.ZinkConfigDialog;
 import com.winlator.core.KeyValueSet;
 import com.winlator.core.StringUtils;
 import com.winlator.widget.TaggedSelectionBox;
@@ -67,6 +68,9 @@ public class GraphicsDriverPicker {
                 break;
             case GraphicsDrivers.VIRGL:
                 (new VirGLConfigDialog(anchor)).show();
+                break;
+            case GraphicsDrivers.ZINK:
+                (new ZinkConfigDialog(anchor)).show();
                 break;
         }
     }
