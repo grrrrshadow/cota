@@ -1,0 +1,16 @@
+glx/xlib: accept OpenGL 4.6 in glXCreateContextAttribsARB.
+
+The version check predates GL 4.6 and answers BadMatch for an explicit 4.6
+request even though zink provides 4.6 (the DRI frontend allows up to 4.6).
+
+--- a/src/gallium/frontends/glx/xlib/glx_api.c
++++ b/src/gallium/frontends/glx/xlib/glx_api.c
+@@ -2714,7 +2714,7 @@
+         ((majorVersion == 1 && minorVersion > 5) ||
+          (majorVersion == 2 && minorVersion > 1) ||
+          (majorVersion == 3 && minorVersion > 3) ||
+-         (majorVersion == 4 && minorVersion > 5) ||
++         (majorVersion == 4 && minorVersion > 6) ||
+          majorVersion > 4))) {
+       generate_error(dpy, BadMatch, 0, X_GLXCreateContextAttribsARB, True);
+       return NULL;

@@ -1,0 +1,134 @@
+zink: present through the sw winsys under xlib GLX.
+
+Upstream zink only presents through kopper (VK_KHR_xcb/wayland surfaces);
+Vortek only has VK_KHR_xlib_surface. Like Mesa <= 22 (and Winlator's
+zink-22.2.5), give display-target resources a winsys display target and on
+flush_frontbuffer read the image back into it and let the xlib winsys
+XShmPutImage it. glXSwapBuffers passes no context, so the xlib frontend falls
+back to its per-display context for the readback.
+
+--- a/src/gallium/drivers/zink/zink_types.h
++++ b/src/gallium/drivers/zink/zink_types.h
+@@ -1329,6 +1329,7 @@
+    bool unflushed_transient; //format view transient has newer data than parent
+    bool subdata; //doing subdata call
+    unsigned dt_stride;
++   struct sw_displaytarget *sw_dt; /* xlib GLX display target */
+ 
+    uint8_t modifiers_count;
+    uint64_t *modifiers;
+@@ -1366,8 +1367,12 @@
+    VkFormatFeatureFlags2 bufferFeatures;
+ };
+ 
++struct sw_winsys;
++struct sw_displaytarget;
++
+ struct zink_screen {
+    struct pipe_screen base;
++   struct sw_winsys *winsys; /* xlib GLX: present through sw winsys */
+ 
+    const char *vendor_name;
+    const char *device_name;
+--- a/src/gallium/drivers/zink/zink_screen.c
++++ b/src/gallium/drivers/zink/zink_screen.c
+@@ -1893,6 +1893,35 @@
+       screen->queue_sparse = screen->queue;
+ }
+ 
++#include "frontend/sw_winsys.h"
++
++static void
++zink_flush_frontbuffer_sw(struct zink_screen *screen, struct pipe_context *pctx,
++                          struct zink_resource *res, unsigned level, unsigned layer,
++                          void *drawable, unsigned nboxes, struct pipe_box *sub_box)
++{
++   struct sw_winsys *winsys = screen->winsys;
++   struct pipe_resource *pres = &res->base.b;
++
++   if (pctx) {
++      void *map = winsys->displaytarget_map(winsys, res->sw_dt, PIPE_MAP_WRITE);
++      if (map) {
++         struct pipe_transfer *transfer = NULL;
++         void *res_map = pipe_texture_map(pctx, pres, level, layer, PIPE_MAP_READ, 0, 0,
++                                          u_minify(pres->width0, level),
++                                          u_minify(pres->height0, level), &transfer);
++         if (res_map) {
++            util_copy_rect(map, pres->format, res->dt_stride, 0, 0,
++                           transfer->box.width, transfer->box.height,
++                           res_map, transfer->stride, 0, 0);
++            pipe_texture_unmap(pctx, transfer);
++         }
++         winsys->displaytarget_unmap(winsys, res->sw_dt);
++      }
++   }
++   winsys->displaytarget_display(winsys, res->sw_dt, drawable, nboxes, sub_box);
++}
++
+ static void
+ zink_flush_frontbuffer(struct pipe_screen *pscreen,
+                        struct pipe_context *pctx,
+@@ -1907,8 +1936,11 @@
+    struct zink_context *ctx = zink_context(pctx);
+ 
+    /* if the surface is no longer a swapchain, this is a no-op */
+-   if (!zink_is_swapchain(res))
++   if (!zink_is_swapchain(res)) {
++      if (screen->winsys && res->sw_dt)
++         zink_flush_frontbuffer_sw(screen, pctx, res, level, layer, winsys_drawable_handle, nboxes, sub_box);
+       return;
++   }
+ 
+    ctx = zink_tc_context_unwrap(pctx);
+ 
+@@ -3869,6 +3901,7 @@
+    struct zink_screen *ret = zink_internal_create_screen(config, -1, -1, 0);
+    if (ret) {
+       ret->drm_fd = -1;
++      ret->winsys = winsys;
+    }
+ 
+    return &ret->base;
+--- a/src/gallium/drivers/zink/zink_resource.c
++++ b/src/gallium/drivers/zink/zink_resource.c
+@@ -47,6 +47,7 @@
+ #include "util/u_upload_mgr.h"
+ #include "util/os_file.h"
+ #include "frontend/winsys_handle.h"
++#include "frontend/sw_winsys.h"
+ 
+ #if !defined(__APPLE__)
+ #define ZINK_USE_DMABUF
+@@ -265,6 +266,8 @@
+       util_idalloc_mt_free(&screen->buffer_ids, res->base.buffer_id_unique);
+    }
+ 
++   if (res->sw_dt && screen->winsys)
++      screen->winsys->displaytarget_destroy(screen->winsys, res->sw_dt);
+    free(res->modifiers);
+    struct pipe_resource *pres_transient = res->transient ? &res->transient->base.b : NULL;
+    pipe_resource_reference(&pres_transient, NULL);
+@@ -1958,6 +1961,10 @@
+       res->base.b.bind |= PIPE_BIND_DISPLAY_TARGET;
+       res->linear = false;
+       res->swapchain = true;
++   } else if ((templ->bind & PIPE_BIND_DISPLAY_TARGET) && screen->winsys) {
++      res->sw_dt = screen->winsys->displaytarget_create(screen->winsys, templ->bind, templ->format,
++                                                         templ->width0, templ->height0, 64, NULL,
++                                                         &res->dt_stride);
+    }
+ 
+    if (!res->obj->host_visible) {
+--- a/src/gallium/frontends/glx/xlib/xm_st.c
++++ b/src/gallium/frontends/glx/xlib/xm_st.c
+@@ -76,6 +76,10 @@
+    if (!ptex)
+       return true;
+ 
++   /* zink needs a context to read the back buffer back for XPutImage */
++   if (!pctx)
++      pctx = xmesa_get_context(drawable);
++
+    pres = xstfb->display_resource;
+    /* (re)allocate the surface for the texture to be displayed */
+    if (!pres || pres != ptex) {
