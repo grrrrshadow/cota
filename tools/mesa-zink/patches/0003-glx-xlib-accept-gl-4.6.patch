@@ -5,7 +5,7 @@ request even though zink provides 4.6 (the DRI frontend allows up to 4.6).
 
 --- a/src/gallium/frontends/glx/xlib/glx_api.c
 +++ b/src/gallium/frontends/glx/xlib/glx_api.c
-@@ -2714,7 +2714,7 @@
+@@ -2734,7 +2734,7 @@
          ((majorVersion == 1 && minorVersion > 5) ||
           (majorVersion == 2 && minorVersion > 1) ||
           (majorVersion == 3 && minorVersion > 3) ||

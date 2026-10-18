@@ -1,14 +1,18 @@
 #!/bin/bash
-# Builds app/src/main/assets/graphics_driver/zink-26.2.5.tzst: Mesa 26.2.5 libGL with xlib GLX and zink (+ softpipe),
+# Builds app/src/main/assets/graphics_driver/zink-25.1.9.tzst: Mesa 25.1.9 libGL with xlib GLX and zink (+ softpipe),
 # for the aarch64 glibc 2.39 rootfs. Like Winlator's zink-22.2.5 it presents by reading each frame back and
 # XShmPutImage-ing it (patches/), because Vortek only offers VK_KHR_xlib_surface.
+# 25.1 is the newest Mesa whose zink starts on the phone's Mali through Vortek (Vulkan 1.3, Vortek's extension list,
+# no VK_EXT_robustness2): 25.2+ require robustness2's nullDescriptor and 26.2+ VK_KHR_maintenance5 (or Vulkan 1.4).
+# vortek-filter-check.sh shows it.
 # Needs Ubuntu 24.04 x86_64 with gcc-aarch64-linux-gnu, g++-aarch64-linux-gnu, python3-venv, bison, flex, ninja-build,
 # pkg-config, dpkg-dev (dpkg-deb), curl and zstd.
 # Usage: tools/mesa-zink/build.sh [OUT.tzst]   (WORK=dir keeps the download, sysroot and build tree; 5-7 min on 4 cores)
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
-VERSION=26.2.5
-SHA256=794b3d1729075dae7ebd47c7283b7ca0cdb5dec668f7f11cc0a5d82f6138a0a5
+VERSION=25.1.9
+# Signed by Eric Engestrom (5755 1DE1 5B96 8F63 41C2 48F6 8D8E 31AF C324 28A6, mesa-25.1.9.tar.xz.sig).
+SHA256=412df33a1bb3c785ed698555a3972118a37c458e7accf6ae53f4bb87b3db454a
 OUT=$(realpath -m "${1:-$HERE/../../app/src/main/assets/graphics_driver/zink-$VERSION.tzst}")
 WORK=$(realpath -m "${WORK:-$(mktemp -d)}")
 mkdir -p "$WORK"
@@ -37,7 +41,7 @@ if [ ! -f "$SYSROOT/.done" ]; then
 fi
 sed "s|@SYSROOT@|$SYSROOT|g" "$HERE/aarch64-linux-gnu.cross.in" > "$WORK/aarch64-linux-gnu.cross"
 
-# Mesa 26 needs a newer meson than Ubuntu 24.04 ships.
+# A pinned meson (Ubuntu 24.04 ships 1.3.2) and the Python modules Mesa generates code with.
 if [ ! -x "$WORK/venv/bin/meson" ]; then
   python3 -m venv "$WORK/venv"
   "$WORK/venv/bin/pip" install -q meson==1.12.1 mako==1.4.3 pyyaml==6.0.3 packaging==26.3

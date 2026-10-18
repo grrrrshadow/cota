@@ -29,5 +29,12 @@
             android:layout_width="match_parent"
             android:id="@+id/SGLVersion"
             android:entries="@array/zink_opengl_version_entries" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="?attr/colorSecondaryText"
+            android:text="@string/zink_auto_gl_version_hint" />
     </LinearLayout>
 </LinearLayout>

@@ -9,15 +9,15 @@ back to its per-display context for the readback.
 
 --- a/src/gallium/drivers/zink/zink_types.h
 +++ b/src/gallium/drivers/zink/zink_types.h
-@@ -1329,6 +1329,7 @@
-    bool unflushed_transient; //format view transient has newer data than parent
+@@ -1359,6 +1359,7 @@
+    bool dmabuf;
     bool subdata; //doing subdata call
     unsigned dt_stride;
 +   struct sw_displaytarget *sw_dt; /* xlib GLX display target */
  
     uint8_t modifiers_count;
     uint64_t *modifiers;
-@@ -1366,8 +1367,12 @@
+@@ -1392,8 +1393,12 @@
     VkFormatFeatureFlags2 bufferFeatures;
  };
  
@@ -32,7 +32,7 @@ back to its per-display context for the readback.
     const char *device_name;
 --- a/src/gallium/drivers/zink/zink_screen.c
 +++ b/src/gallium/drivers/zink/zink_screen.c
-@@ -1893,6 +1893,35 @@
+@@ -1745,6 +1745,35 @@
        screen->queue_sparse = screen->queue;
  }
  
@@ -68,7 +68,7 @@ back to its per-display context for the readback.
  static void
  zink_flush_frontbuffer(struct pipe_screen *pscreen,
                         struct pipe_context *pctx,
-@@ -1907,8 +1936,11 @@
+@@ -1759,8 +1788,11 @@
     struct zink_context *ctx = zink_context(pctx);
  
     /* if the surface is no longer a swapchain, this is a no-op */
@@ -81,7 +81,7 @@ back to its per-display context for the readback.
  
     ctx = zink_tc_context_unwrap(pctx);
  
-@@ -3869,6 +3901,7 @@
+@@ -3701,6 +3733,7 @@
     struct zink_screen *ret = zink_internal_create_screen(config, -1, -1, 0);
     if (ret) {
        ret->drm_fd = -1;
@@ -91,7 +91,7 @@ back to its per-display context for the readback.
     return &ret->base;
 --- a/src/gallium/drivers/zink/zink_resource.c
 +++ b/src/gallium/drivers/zink/zink_resource.c
-@@ -47,6 +47,7 @@
+@@ -46,6 +46,7 @@
  #include "util/u_upload_mgr.h"
  #include "util/os_file.h"
  #include "frontend/winsys_handle.h"
@@ -99,16 +99,16 @@ back to its per-display context for the readback.
  
  #if !defined(__APPLE__)
  #define ZINK_USE_DMABUF
-@@ -265,6 +266,8 @@
-       util_idalloc_mt_free(&screen->buffer_ids, res->base.buffer_id_unique);
+@@ -250,6 +251,8 @@
     }
+    /* no need to do anything for the caches, these objects own the resource lifetimes */
  
 +   if (res->sw_dt && screen->winsys)
 +      screen->winsys->displaytarget_destroy(screen->winsys, res->sw_dt);
     free(res->modifiers);
-    struct pipe_resource *pres_transient = res->transient ? &res->transient->base.b : NULL;
-    pipe_resource_reference(&pres_transient, NULL);
-@@ -1958,6 +1961,10 @@
+    zink_resource_object_reference(screen, &res->obj, NULL);
+    threaded_resource_deinit(pres);
+@@ -1679,6 +1682,10 @@
        res->base.b.bind |= PIPE_BIND_DISPLAY_TARGET;
        res->linear = false;
        res->swapchain = true;

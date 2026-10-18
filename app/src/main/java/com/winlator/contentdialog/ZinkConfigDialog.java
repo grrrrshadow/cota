@@ -13,9 +13,17 @@ import com.winlator.core.KeyValueSet;
 import com.winlator.core.StringUtils;
 
 public class ZinkConfigDialog extends ContentDialog {
-    // Bruno's build, kept for games that worked with it; its version under Vortek was always overridden to 3.3.
+    // Bruno's build, kept for games that worked with it.
     public static final String LEGACY_VERSION = "22.2.5";
     public static final String[] VERSIONS = {DefaultVersion.ZINK, LEGACY_VERSION};
+    // "Auto" under Vortek, for both versions (Bruno always set it for 22.2.5). Through Vortek, Mali's zink only
+    // reaches OpenGL 3.1 by itself (no VK_EXT_depth_clip_enable for ARB_depth_clamp; then no dual-source blending,
+    // vertex attribute divisors or 2_10_10_10 vertex formats for 3.3), so core 3.2+ contexts (OpenTTD, WineD3D)
+    // would fail. 3.3 lets them start; 4.0 would also promise fp64, which Mali does not have, and OpenTTD only maps
+    // buffers persistently from 4.4 on. Vortek fakes some core features (dualSrcBlend, logicOp, fillModeNonSolid,
+    // clip/cull distances, multiViewport) and drops them at vkCreateDevice, so a higher version is no more honest.
+    // See tools/mesa-zink/vortek-filter-check.sh.
+    public static final String VORTEK_GL_VERSION = "3.3";
     // Not "glVersion": the OpenGL slot keeps VirGL's config after switching to Zink until this dialog is confirmed,
     // and VirGL always saves its glVersion (3.1 by default), which would silently cap Zink.
     private static final String GL_VERSION_KEY = "glVersionOverride";
@@ -62,15 +70,16 @@ public class ZinkConfigDialog extends ContentDialog {
 
     public static void setEnvVars(KeyValueSet config, boolean vortek, EnvVars envVars) {
         envVars.put("GALLIUM_DRIVER", "zink");
-        envVars.put("ZINK_CONTEXT_THREADED", "1");
+        // 22.2.5 only threads with this; newer Mesa ignores it and threads by default (GALLIUM_THREAD).
+        if (getVersion(config).equals(LEGACY_VERSION)) envVars.put("ZINK_CONTEXT_THREADED", "1");
 
         String glVersion = getGLVersion(config);
         if (!glVersion.isEmpty()) {
             envVars.put("MESA_GL_VERSION_OVERRIDE", glVersion);
         }
-        else if (vortek && getVersion(config).equals(LEGACY_VERSION)) {
-            envVars.put("MESA_GL_VERSION_OVERRIDE", "3.3");
+        else if (vortek) {
+            envVars.put("MESA_GL_VERSION_OVERRIDE", VORTEK_GL_VERSION);
         }
-        // 26.2.5 on "Auto" reports what zink can really do on this GPU.
+        // With Turnip, "Auto" reports what zink can really do on the GPU.
     }
 }
