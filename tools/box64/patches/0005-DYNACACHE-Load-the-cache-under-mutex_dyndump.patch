@@ -1,0 +1,54 @@
+From 2ddfeae6064615aeb1f5ac1a842e2ffb3bc46813 Mon Sep 17 00:00:00 2001
+From: Winlator DL <build@localhost>
+Date: Sat, 17 Oct 2026 22:27:59 +0000
+Subject: [PATCH 5/6] [DYNACACHE] Load the cache under mutex_dyndump
+
+MmapDynaCache() runs from RecordEnvMappings() after the mutex is released, but
+loading a cache adds blocks to the jump table, db_sizes and rbt_dynmem, which
+FillBlock64() changes under mutex_dyndump, and it uses the static buffers of
+GetDynacacheFolder()/MmaplistName() that SerializeMmaplist() uses under the same
+mutex. A thread mapping a cached file while other threads compile code corrupts
+those trees ("Warning, unstable Red-Black tree").
+---
+ src/tools/env.c | 17 ++++++++++++++++-
+ 1 file changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/src/tools/env.c b/src/tools/env.c
+index 0ca525d..49d744e 100644
+--- a/src/tools/env.c
++++ b/src/tools/env.c
+@@ -4,6 +4,7 @@
+ #include <stddef.h>
+ #include <fcntl.h>
+ #include <string.h>
++#include <signal.h>
+ #include <inttypes.h>
+ #include <strings.h>
+ #include <sys/types.h>
+@@ -872,8 +873,22 @@ void RecordEnvMappings(uintptr_t addr, size_t length, int fd)
+         int dynacache = box64env.dynacache;
+         if(mapping->env && mapping->env->is_dynacache_overridden)
+             dynacache = mapping->env->dynacache;
+-        if(dynacache && BOX64ENV(dynarec))
++        if(dynacache && BOX64ENV(dynarec)) {
++            // Loading a cache fills the jump table, db_sizes and rbt_dynmem, and uses static name buffers:
++            // take the lock FillBlock64 and SerializeMmaplist hold, with signals blocked as in internalDBGetBlock.
++            sigset_t old_sig, critical_prot;
++            sigfillset(&critical_prot);
++            sigdelset(&critical_prot, SIGSEGV);
++            sigdelset(&critical_prot, SIGILL);
++            sigdelset(&critical_prot, SIGBUS);
++            sigdelset(&critical_prot, SIGABRT);
++            sigdelset(&critical_prot, SIGFPE);
++            pthread_sigmask(SIG_BLOCK, &critical_prot, &old_sig);
++            mutex_lock(&my_context->mutex_dyndump);
+             MmapDynaCache(mapping);
++            mutex_unlock(&my_context->mutex_dyndump);
++            pthread_sigmask(SIG_SETMASK, &old_sig, NULL);
++        }
+         #endif
+     }
+     if(mapping->env) {
+-- 
+2.43.0
+
