@@ -1,0 +1,24 @@
+# Meson cross file for the rootfs (aarch64, glibc 2.39). build.sh replaces @SYSROOT@ with the directory
+# the arm64 -dev .debs were unpacked into; glibc itself still comes from the cross toolchain's own dirs.
+[binaries]
+# --sysroot makes the .deb libraries default search dirs, so meson adds no build RUNPATH pointing into WORK
+# (which made the output depend on the WORK path).
+c = ['aarch64-linux-gnu-gcc', '--sysroot=@SYSROOT@']
+cpp = ['aarch64-linux-gnu-g++', '--sysroot=@SYSROOT@']
+ar = 'aarch64-linux-gnu-ar'
+strip = 'aarch64-linux-gnu-strip'
+pkg-config = 'pkg-config'
+
+[built-in options]
+c_link_args = ['-Wl,-rpath-link,@SYSROOT@/usr/lib/aarch64-linux-gnu']
+cpp_link_args = ['-Wl,-rpath-link,@SYSROOT@/usr/lib/aarch64-linux-gnu']
+
+[properties]
+pkg_config_libdir = ['@SYSROOT@/usr/lib/aarch64-linux-gnu/pkgconfig', '@SYSROOT@/usr/share/pkgconfig']
+sys_root = '@SYSROOT@'
+
+[host_machine]
+system = 'linux'
+cpu_family = 'aarch64'
+cpu = 'armv8-a'
+endian = 'little'

@@ -1,0 +1,30 @@
+Build zink into the xlib GLX libGL (glx=xlib).
+
+The xlib target only links the software rasterizers; with GALLIUM_DRIVER=zink
+sw_screen_create_named() calls zink_create_screen(), so link driver_zink (and
+the xmlconfig library zink needs) and declare zink_create_screen().
+
+--- a/src/gallium/targets/libgl-xlib/meson.build
++++ b/src/gallium/targets/libgl-xlib/meson.build
+@@ -25,7 +25,7 @@
+   link_depends : gallium_xlib_link_depends,
+   link_whole : [libxlib, libglapi_bridge],
+   link_with : [libgalliumvl_stub, libws_xlib, libglapi, libgallium, libmesa],
+-  dependencies : [dep_x11, idep_mesautil, dep_thread, dep_clock, dep_unwind, driver_swrast, driver_virgl, driver_asahi],
++  dependencies : [dep_x11, idep_mesautil, dep_thread, dep_clock, dep_unwind, driver_swrast, driver_virgl, driver_asahi, driver_zink, idep_xmlconfig],
+   install : true,
+   version : '1.5.0',
+   darwin_versions: '4.0.0',
+--- a/src/gallium/auxiliary/target-helpers/inline_sw_helper.h
++++ b/src/gallium/auxiliary/target-helpers/inline_sw_helper.h
+@@ -20,6 +20,10 @@
+ #include "llvmpipe/lp_public.h"
+ #endif
+ 
++#ifdef GALLIUM_ZINK
++#include "zink/zink_public.h"
++#endif
++
+ #ifdef GALLIUM_VIRGL
+ #include "virgl/virgl_public.h"
+ #include "virgl/vtest/virgl_vtest_public.h"

@@ -45,6 +45,7 @@ import com.winlator.contentdialog.TurnipConfigDialog;
 import com.winlator.contentdialog.VKD3DConfigDialog;
 import com.winlator.contentdialog.VirGLConfigDialog;
 import com.winlator.contentdialog.WineD3DConfigDialog;
+import com.winlator.contentdialog.ZinkConfigDialog;
 import com.winlator.core.AppUtils;
 import com.winlator.core.CPUStatus;
 import com.winlator.core.CrashLog;
@@ -783,7 +784,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             cacheId += graphicsDriver[0]+"-"+graphicsDriverConfig[0].get("version", DefaultVersion.TURNIP);
         }
         else cacheId += graphicsDriver[0]+"-"+DefaultVersion.valueOf(graphicsDriver[0]);
-        cacheId += "-"+graphicsDriver[1]+"-"+DefaultVersion.valueOf(graphicsDriver[1]);
+        cacheId += "-"+graphicsDriver[1]+"-"+getOpenGLDriverVersion();
 
         String currentGraphicsDriver = preferences.getString("current_graphics_driver", "");
         boolean changed = !cacheId.equals(currentGraphicsDriver);
@@ -816,11 +817,9 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         switch (graphicsDriver[1]) {
             case GraphicsDrivers.ZINK:
-                envVars.put("GALLIUM_DRIVER", "zink");
-                envVars.put("ZINK_CONTEXT_THREADED", "1");
-                if (graphicsDriver[0].equals(GraphicsDrivers.VORTEK)) envVars.put("MESA_GL_VERSION_OVERRIDE", "3.3");
+                ZinkConfigDialog.setEnvVars(graphicsDriverConfig[1], graphicsDriver[0].equals(GraphicsDrivers.VORTEK), envVars);
 
-                if (changed) TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/zink-"+DefaultVersion.ZINK+".tzst", rootDir);
+                if (changed) TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/zink-"+getOpenGLDriverVersion()+".tzst", rootDir);
                 break;
             case GraphicsDrivers.VIRGL:
                 envVars.put("GALLIUM_DRIVER", "virpipe");
@@ -836,6 +835,12 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 if (changed || MainActivity.DEBUG_MODE) TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/gladio-"+DefaultVersion.GLADIO+".tzst", rootDir);
                 break;
         }
+    }
+
+    // Zink comes in two Mesa versions; switching between them changes the cache id, so libGL gets extracted again.
+    private String getOpenGLDriverVersion() {
+        if (graphicsDriver[1].equals(GraphicsDrivers.ZINK)) return ZinkConfigDialog.getVersion(graphicsDriverConfig[1]);
+        return DefaultVersion.valueOf(graphicsDriver[1]);
     }
 
     private void showTouchpadHelpDialog() {
