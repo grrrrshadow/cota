@@ -40,6 +40,10 @@
 
 struct jni_info jni_info;
 
+/* All clients are served on one thread. vrend tracks which of a client's contexts is current,
+ * but only as long as no other client has made its own contexts current in between. */
+static struct virgl_client *current_client;
+
 static struct virgl_client *virgl_server_handle_new_connection(int fd)
 {
    struct virgl_client *client = calloc(1, sizeof(struct virgl_client));
@@ -56,6 +60,7 @@ static void virgl_server_kill_connection(struct virgl_client *client)
 static void virgl_server_destroy_client(struct virgl_client **client)
 {
    virgl_server_destroy_renderer(*client);
+   current_client = NULL;
 
    free(*client);
    *client = NULL;
@@ -82,8 +87,15 @@ static void virgl_server_handle_request(struct virgl_client *client)
       client->initialized = true;
    }
 
-   vrend_renderer_check_fences(client);
-   
+   /* Requests other than command submission work in context 0, decoding switches to the
+    * guest's context itself. Fences are retired after submissions and in busy waits. */
+   if (client != current_client) {
+      vrend_renderer_force_ctx_0(client);
+      current_client = client;
+   }
+   else if (header[1] != VCMD_SUBMIT_CMD)
+      vrend_renderer_switch_ctx_0(client);
+
    switch (header[1]) {
       case VCMD_GET_CAPS:
          ret = virgl_server_send_caps(client, header[0]);
@@ -122,7 +134,7 @@ Java_com_winlator_xenvironment_components_VirGLRendererComponent_handleNewConnec
    
    jclass cls = (*env)->GetObjectClass(env, obj);
    jni_info.kill_connection = (*env)->GetMethodID(env, cls, "killConnection", "(I)V");
-   jni_info.flush_frontbuffer = (*env)->GetMethodID(env, cls, "flushFrontbuffer", "(II)V");
+   jni_info.flush_frontbuffer = (*env)->GetMethodID(env, cls, "flushFrontbuffer", "(III)V");
    
    return (jlong)virgl_server_handle_new_connection(fd);
 }
@@ -143,4 +155,5 @@ Java_com_winlator_xenvironment_components_VirGLRendererComponent_destroyClient(J
 JNIEXPORT void JNICALL
 Java_com_winlator_xenvironment_components_VirGLRendererComponent_destroyRenderer(JNIEnv *env, jobject obj, jlong clientPtr) {
    virgl_server_destroy_renderer((struct virgl_client*)clientPtr);
+   current_client = NULL;
 }
