@@ -1,6 +1,7 @@
 package com.winlator.core;
 
 import android.os.Process;
+import android.os.SystemClock;
 import android.system.Os;
 import android.system.OsConstants;
 
@@ -18,6 +19,7 @@ import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
@@ -53,6 +55,127 @@ public abstract class ProcessHelper {
 
     public static void killProcess(int pid) {
         Process.sendSignal(pid, OsConstants.SIGKILL);
+    }
+
+    // What terminateGuestProcesses needs from the system, so a test can stand in for it.
+    interface ProcessControl {
+        void resume(int pid);
+
+        void quit(int pid);
+
+        void terminate(int pid);
+
+        // 0 once the process has ended, also while it is a zombie
+        int getThreadCount(int pid);
+
+        long uptimeMillis();
+
+        void sleep(long millis);
+    }
+
+    private static final ProcessControl systemProcessControl = new ProcessControl() {
+        @Override
+        public void resume(int pid) {
+            Process.sendSignal(pid, OsConstants.SIGCONT);
+        }
+
+        @Override
+        public void quit(int pid) {
+            Process.sendSignal(pid, OsConstants.SIGQUIT);
+        }
+
+        @Override
+        public void terminate(int pid) {
+            Process.sendSignal(pid, OsConstants.SIGTERM);
+        }
+
+        @Override
+        public int getThreadCount(int pid) {
+            try (BufferedReader reader = new BufferedReader(new FileReader("/proc/"+pid+"/stat"))) {
+                String line = reader.readLine();
+                return line != null ? parseThreadCount(line) : 0;
+            }
+            catch (IOException e) {
+                return 0;
+            }
+        }
+
+        @Override
+        public long uptimeMillis() {
+            return SystemClock.uptimeMillis();
+        }
+
+        @Override
+        public void sleep(long millis) {
+            try {
+                Thread.sleep(millis);
+            }
+            catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    };
+
+    // Lets Wine end before the app kills whatever is left, which would lose the session's work:
+    // on SIGQUIT box64 writes its DynaCache files and then Wine's handler ends that thread, and on SIGTERM
+    // wineserver saves the registry and exits, which also ends the Windows processes still running.
+    // Returns within about timeoutMs.
+    public static void terminateGuestProcesses(int timeoutMs) {
+        terminateGuestProcesses(getChildProcesses(), timeoutMs, systemProcessControl);
+    }
+
+    static void terminateGuestProcesses(List<PStat> processes, int timeoutMs, ProcessControl control) {
+        long startTime = control.uptimeMillis();
+        LinkedHashMap<Integer, Integer> threadCounts = new LinkedHashMap<>();
+        ArrayList<Integer> wineserverPids = new ArrayList<>();
+        for (PStat process : processes) {
+            if (!process.guestProcess) continue;
+            // A stopped process (the activity was paused) would only see the signal once resumed.
+            if (process.state == PState.STOPPED) control.resume(process.pid);
+            if (isWineserver(process)) {
+                wineserverPids.add(process.pid);
+            }
+            else threadCounts.put(process.pid, control.getThreadCount(process.pid));
+        }
+
+        for (int pid : threadCounts.keySet()) control.quit(pid);
+        // Wine's SIGQUIT handler ends the thread it ran on, so one thread fewer means box64 has finished writing.
+        long deadline = startTime + timeoutMs * 3L / 4;
+        while (true) {
+            threadCounts.entrySet().removeIf((entry) -> {
+                int threadCount = control.getThreadCount(entry.getKey());
+                return threadCount == 0 || threadCount < entry.getValue();
+            });
+            if (threadCounts.isEmpty() || control.uptimeMillis() >= deadline) break;
+            control.sleep(20);
+        }
+
+        for (int pid : wineserverPids) control.terminate(pid);
+        deadline = startTime + timeoutMs;
+        while (true) {
+            wineserverPids.removeIf((pid) -> control.getThreadCount(pid) == 0);
+            if (wineserverPids.isEmpty() || control.uptimeMillis() >= deadline) break;
+            control.sleep(20);
+        }
+    }
+
+    static boolean isWineserver(PStat process) {
+        return process.name.contains("wineserver") || process.shortName.contains("wineserver");
+    }
+
+    // Thread count from a /proc/<pid>/stat line, 0 for a zombie. The command name in parentheses may contain
+    // spaces and parentheses itself, so the fields are counted from the last ')'.
+    static int parseThreadCount(String stat) {
+        int end = stat.lastIndexOf(')');
+        if (end == -1) return 0;
+        String[] fields = stat.substring(end+1).trim().split(" +");
+        if (fields.length < 18 || fields[0].equals("Z") || fields[0].equals("X")) return 0;
+        try {
+            return Integer.parseInt(fields[17]);
+        }
+        catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     public static int exec(String command) {
@@ -362,9 +485,8 @@ public abstract class ProcessHelper {
                     result.add(pstat);
                 }
             }
-            catch (Exception e) {
-                return Collections.emptyList();
-            }
+            // A process that ended while the list was read: skip it, the others are still there.
+            catch (Exception e) {}
         }
 
         return result;
