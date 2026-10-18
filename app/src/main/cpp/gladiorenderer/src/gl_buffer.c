@@ -4,11 +4,17 @@
 
 GLBuffer* GLBuffer_getBound(GLenum target) {
     GLClientState* clientState = &currentRenderer->clientState;
-    return clientState->vao->buffer[indexOfGLTarget(target)];
+    uint8_t index = indexOfGLTarget(target);
+    return index < MAX_BUFFER_TARGETS ? clientState->vao->buffer[index] : NULL;
 }
 
 void GLBuffer_bind(GLenum target, GLuint id) {
     GLClientState* clientState = &currentRenderer->clientState;
+    // Targets without a slot (copy read/write, indirect...) are only bound on the GLES side
+    if (indexOfGLTarget(target) >= MAX_BUFFER_TARGETS) {
+        glBindBuffer(target, id);
+        return;
+    }
     if (id == 0) {
         clientState->vao->buffer[indexOfGLTarget(target)] = NULL;
         if (target != GL_PIXEL_UNPACK_BUFFER) glBindBuffer(target, id);

@@ -251,6 +251,7 @@ static inline int sizeofGLType(GLenum type) {
             return sizeof(GLshort);
         case GL_INT:
         case GL_UNSIGNED_INT:
+        case GL_FIXED:
             return sizeof(GLint);
         case GL_HALF_FLOAT:
             return sizeof(GLhalf);
@@ -261,6 +262,17 @@ static inline int sizeofGLType(GLenum type) {
         default:
             return 0;
     }
+}
+
+static inline int sizeofVertexAttrib(GLint size, GLenum type) {
+    switch (type) {
+        case GL_INT_2_10_10_10_REV:
+        case GL_UNSIGNED_INT_2_10_10_10_REV:
+        case GL_UNSIGNED_INT_10F_11F_11F_REV:
+            return 4;
+    }
+    if (size == GL_BGRA) size = 4;
+    return MIN(4, size) * sizeofGLType(type);
 }
 
 static inline uint8_t indexOfGLTarget(GLenum target) {

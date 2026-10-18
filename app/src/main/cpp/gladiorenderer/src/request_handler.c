@@ -3119,15 +3119,21 @@ void gd_handle_glVertexAttrib3f(GLContext* context) {
 }
 
 void gd_handle_glVertexAttrib4Nbv(GLContext* context) {
-    println(MSG_DEBUG_UNIMPLEMENTED_FUNC, "glVertexAttrib4Nbv");
+    GLuint index = ArrayBuffer_getInt(&context->inputBuffer);
+    GLbyte* v = ArrayBuffer_getBytes(&context->inputBuffer, 4);
+    glVertexAttrib4f(index, MAX(v[0] / 127.0f, -1.0f), MAX(v[1] / 127.0f, -1.0f), MAX(v[2] / 127.0f, -1.0f), MAX(v[3] / 127.0f, -1.0f));
 }
 
 void gd_handle_glVertexAttrib4Niv(GLContext* context) {
-    println(MSG_DEBUG_UNIMPLEMENTED_FUNC, "glVertexAttrib4Niv");
+    GLuint index = ArrayBuffer_getInt(&context->inputBuffer);
+    GLint* v = ArrayBuffer_getBytes(&context->inputBuffer, 4 * sizeof(GLint));
+    glVertexAttrib4f(index, MAX(v[0] / 2147483647.0, -1.0), MAX(v[1] / 2147483647.0, -1.0), MAX(v[2] / 2147483647.0, -1.0), MAX(v[3] / 2147483647.0, -1.0));
 }
 
 void gd_handle_glVertexAttrib4Nsv(GLContext* context) {
-    println(MSG_DEBUG_UNIMPLEMENTED_FUNC, "glVertexAttrib4Nsv");
+    GLuint index = ArrayBuffer_getInt(&context->inputBuffer);
+    GLshort* v = ArrayBuffer_getBytes(&context->inputBuffer, 4 * sizeof(GLshort));
+    glVertexAttrib4f(index, MAX(v[0] / 32767.0f, -1.0f), MAX(v[1] / 32767.0f, -1.0f), MAX(v[2] / 32767.0f, -1.0f), MAX(v[3] / 32767.0f, -1.0f));
 }
 
 void gd_handle_glVertexAttrib4Nub(GLContext* context) {
@@ -3137,19 +3143,25 @@ void gd_handle_glVertexAttrib4Nub(GLContext* context) {
     GLubyte z = ArrayBuffer_get(&context->inputBuffer);
     GLubyte w = ArrayBuffer_get(&context->inputBuffer);
 
-    println(MSG_DEBUG_UNIMPLEMENTED_FUNC, "glVertexAttrib4Nub");
+    glVertexAttrib4f(index, x / 255.0f, y / 255.0f, z / 255.0f, w / 255.0f);
 }
 
 void gd_handle_glVertexAttrib4Nubv(GLContext* context) {
-    println(MSG_DEBUG_UNIMPLEMENTED_FUNC, "glVertexAttrib4Nubv");
+    GLuint index = ArrayBuffer_getInt(&context->inputBuffer);
+    GLubyte* v = ArrayBuffer_getBytes(&context->inputBuffer, 4);
+    glVertexAttrib4f(index, v[0] / 255.0f, v[1] / 255.0f, v[2] / 255.0f, v[3] / 255.0f);
 }
 
 void gd_handle_glVertexAttrib4Nuiv(GLContext* context) {
-    println(MSG_DEBUG_UNIMPLEMENTED_FUNC, "glVertexAttrib4Nuiv");
+    GLuint index = ArrayBuffer_getInt(&context->inputBuffer);
+    GLuint* v = ArrayBuffer_getBytes(&context->inputBuffer, 4 * sizeof(GLuint));
+    glVertexAttrib4f(index, v[0] / 4294967295.0, v[1] / 4294967295.0, v[2] / 4294967295.0, v[3] / 4294967295.0);
 }
 
 void gd_handle_glVertexAttrib4Nusv(GLContext* context) {
-    println(MSG_DEBUG_UNIMPLEMENTED_FUNC, "glVertexAttrib4Nusv");
+    GLuint index = ArrayBuffer_getInt(&context->inputBuffer);
+    GLushort* v = ArrayBuffer_getBytes(&context->inputBuffer, 4 * sizeof(GLushort));
+    glVertexAttrib4f(index, v[0] / 65535.0f, v[1] / 65535.0f, v[2] / 65535.0f, v[3] / 65535.0f);
 }
 
 void gd_handle_glVertexAttrib4f(GLContext* context) {

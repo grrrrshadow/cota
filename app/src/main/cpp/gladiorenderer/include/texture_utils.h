@@ -136,6 +136,11 @@ static inline int computeTexImageDataSize(uint32_t format, uint32_t type, uint32
         case GL_BGRA_INTEGER:
             channels = 4;
             break;
+        case GL_DEPTH_COMPONENT:
+        case GL_STENCIL_INDEX:
+        case GL_DEPTH_STENCIL:
+            channels = 1;
+            break;
     }
 
     switch (type) {
@@ -170,8 +175,16 @@ static inline int computeTexImageDataSize(uint32_t format, uint32_t type, uint32
         case GL_UNSIGNED_INT_8_8_8_8:
         case GL_UNSIGNED_INT_8_8_8_8_REV:
         case GL_UNSIGNED_INT_10_10_10_2:
+        case GL_UNSIGNED_INT_2_10_10_10_REV:
+        case GL_UNSIGNED_INT_24_8:
+        case GL_UNSIGNED_INT_10F_11F_11F_REV:
+        case GL_UNSIGNED_INT_5_9_9_9_REV:
             channels = 1;
             bytesPerPixel = 4;
+            break;
+        case GL_FLOAT_32_UNSIGNED_INT_24_8_REV:
+            channels = 1;
+            bytesPerPixel = 8;
             break;
     }
 
@@ -413,7 +426,7 @@ static inline uint32_t getTexTargetForBinding(uint32_t binding) {
         case GL_TEXTURE_BINDING_RECTANGLE:
             return GL_TEXTURE_2D;
         case GL_TEXTURE_BINDING_3D:
-            return GL_TEXTURE_2D;
+            return GL_TEXTURE_3D;
         case GL_TEXTURE_BINDING_CUBE_MAP:
             return GL_TEXTURE_CUBE_MAP;
         case GL_TEXTURE_BINDING_2D_ARRAY:
