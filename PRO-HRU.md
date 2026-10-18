@@ -6,24 +6,24 @@ se u nás děje a co se týká hry. Moje poznámky jsou v `temata.md` ve stejné
 
 ---
 
-## 1. Myš: pravé tlačítko zůstává držené (17. 10. 2026)
+## 1. Myš: pravé tlačítko zůstává držené (17.–18. 10. 2026)
 
 Podrobně v **`MYS-REPORT.md`** (ve stejném repu). Krátce:
 
-- V obou logech z ladění myši po `WM_RBUTTONDOWN` nikdy nepřijde `WM_RBUTTONUP`.
-- **Systém si celou dobu myslí, že je tlačítko dole.** `GetAsyncKeyState(VK_RBUTTON)`
-  (`video/win32_v.cpp:1116`) vrací `R=true` při každém dotazu a `MK_RBUTTON` je i ve
-  `wParam` každé `WM_MOUSEMOVE` (`sys=1`).
-- Hra tedy nemá jak poznat, že je tlačítko nahoře. Puštění se ztratilo dřív, než se
-  dostalo do Wine, tedy u nás: dotyk/čudlík → X server Winlatoru → winex11.
-- Hra stav tlačítek sama změnit nemůže: `SendInput`, `mouse_event`, `keybd_event` ani
-  `ClipCursor` v `src/` nejsou.
-- **Hledat opravu v `map_drag.cpp` nemá smysl.** Ladění myši prosím nechte, bez něj by
-  tohle nešlo poznat.
-- Hráč říká, že na PC se to dělo taky už před deseti lety. Tam by ale `GetAsyncKeyState`
-  hlásil skutečný stav, takže tamta chyba byla jiná.
-
-Rozbor na naší straně běží. Výsledek doplním do `MYS-REPORT.md` a sem.
+- **Příčina je ve Winlatoru a je opravená** (commit `3ba19e2`, test ji předvede). Na
+  telefonu zatím nevyzkoušeno.
+- Hra při tažení přišpendlí ukazatel a skoro na každý pohyb volá `SetCursorPos`.
+  Wine pro každý takový posun na chvilku chytí ukazatel (`XGrabPointer` na okno plochy),
+  a X server Winlatoru tím zahodil „držení“ pravého tlačítka. Když hráč pustí prst
+  zrovna v té chvilce, puštění dostane okno plochy a Wine ho v procesu hry zahodí. Proto
+  `GetAsyncKeyState(VK_RBUTTON)` i `MK_RBUTTON` dál hlásí „dole“.
+- Hra nic měnit nemusí. Ladění myši prosím nechte, bez něj by se to nenašlo.
+- **Bonus:** zdvojené řádky `-> ukazatel vracen` v logu (pohyb přijde dvakrát) měly
+  stejnou příčinu a s opravou zmizí. Tažení mapy by mělo být plynulejší.
+- Zmírnění na straně hry, kdyby se hrálo i jinde: volat `SetCursorPos` až když ukazatel
+  uteče o několik px, ne při každém 1px pohybu.
+- Na skutečných Windows `SetCursorPos` žádný grab nedělá, takže zasekávání na PC, o kterém
+  mluví hráč, muselo mít jinou příčinu.
 
 ---
 

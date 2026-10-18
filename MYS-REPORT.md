@@ -7,8 +7,9 @@ Podklady: dva logy z ladění myši ve hře (`mouse_debug.cpp`, `map_drag.cpp` v
 uložené 17. 10. v 01:45:49 a 13:29:20. Hra běží ve Winlatoru DL (Wine 10.10 + Box64) na
 Motorole Edge 60 Fusion.
 
-**Stav: příčina se pořád hledá.** Níž je, co z logů jistě plyne. Výsledek rozboru
-doplním sem.
+**Stav (18. 10.): příčina nalezena, je ve Winlatoru (X server), oprava je v commitu
+`3ba19e2`.** Test ji předvede: s původním kódem 2 z 5 případů selže, s opravou projde všech
+5. Na telefonu ještě nevyzkoušeno, nezávislá kontrola opravy běží. Příčina je v kapitole 4.
 
 ---
 
@@ -60,27 +61,58 @@ X server Winlatoru → winex11 ve Wine.
 - `GetAsyncKeyState` po celou dobu vrací R=true, `sys=1`.
 - 1509554: nový `WM_RBUTTONDOWN` → hra hlásí ztracené puštění.
 
-## 4. Co se zkoumá
+## 4. Příčina
 
-Rozbor běží na straně Winlatoru DL (repo `grrrrshadow/cota`):
+Spouští to přišpendlený ukazatel při tažení mapy, ale chyba je ve Winlatoru:
 
-1. Čudlíky na obrazovce (`InputControlsView`, `ControlElement`): kde se stisk pošle a
-   puštění ne (prst sjede z čudlíku, druhý prst, zrušený dotyk, přepínač).
-2. Touchpad a skutečná myš (`TouchpadView`): pravý klik dvěma prsty, zpožděné puštění
-   o 30 ms s kontrolou stavu, externí myš.
-3. X server Winlatoru: podle X11 má `ButtonRelease` dostat stejné okno jako `ButtonPress`,
-   i když se ukazatel mezitím přesunul (`XWarpPointer` po `SetCursorPos`) nebo se pod ním
-   objevilo jiné okno. Zkoumá se, jestli to Winlator tak dělá.
-4. Wine 10.10 winex11: kdy přijaté `ButtonRelease` zahodí, třeba když okno nepatří Wine.
+1. Hra při tažení pravým tlačítkem volá skoro na každou `WM_MOUSEMOVE` `SetCursorPos`
+   (`map_drag.cpp:172`, `video/win32_v.cpp:703-720`).
+2. Wine (winex11, `X11DRV_SetCursorPos`, wine-10.10 `dlls/winex11.drv/mouse.c:1394-1410`)
+   pro každý takový posun udělá `XGrabPointer` na své kořenové okno, počká na odpověď,
+   pak `XWarpPointer` a `XUngrabPointer`. Hra běží pod `explorer /desktop=`, takže tím
+   kořenovým oknem je okno virtuální plochy, které patří procesu explorer.
+3. Podle X11 drží stisknuté tlačítko takzvaný implicitní grab: puštění musí dostat
+   stejné okno jako stisk. **X server Winlatoru ale nechal grab od Wine ten implicitní
+   nahradit** (`GrabRequests.java:41-50`, `GrabManager.java:54-66`) a `UngrabPointer`
+   pak smazal grab úplně (`GrabRequests.java:61-64`).
+4. Když hráč pustí prst zrovna mezi `XGrabPointer` a `XUngrabPointer`, puštění dostane
+   okno plochy. Wine v procesu hry k oknu plochy nemá data (patří exploreru), takže
+   puštění zahodí (`event.c:453-455`, `mouse.c:550`). Do wineserveru se nedostane, proto
+   `GetAsyncKeyState` i `MK_RBUTTON` dál hlásí „dole“.
+5. Okénko je krátké: jedna cesta Wine → Box64 → X server a zpět. Hra ho ale otevírá asi
+   50× za sekundu, takže při dlouhém tažení se do něj puštění dřív nebo později trefí.
+6. Winlator sám má tlačítko už puštěné, takže další stisk je nový `ButtonPress` →
+   `WM_RBUTTONDOWN` a hlášení `ROZPOR`. Přesně tak oba logy končí.
 
-Kandidáty pak ověří další agent, který je zkusí vyvrátit.
+Vysvětluje to i **zdvojené řádky** `-> ukazatel vracen` v logu 1 (202 z 683): po prvním
+posunu už tlačítko nemá žádný grab, takže každý další `XGrabPointer` začne „od nuly“ a
+explorer dostane `EnterNotify`. Na to explorer vrátí kurzor zpátky, a hra tak dostane
+pohyb dvakrát. Tažení je proto trhanější.
 
-## 5. Pro hru
+Ostatní podezření vyloučila data: ztráty na straně Androidu (zrušený dotyk, přepínač,
+změna profilu, externí myš) by nechaly tlačítko držené i ve Winlatoru, a pak by další
+stisk žádné `WM_RBUTTONDOWN` neposlal. Oba logy ale novým `WM_RBUTTONDOWN` končí.
 
-- Ladění myši je výborné. Bez něj by nešlo poznat, že se puštění ztrácí ještě před Wine.
-  Prosím nechat ho tam.
-- Hledat opravu v `map_drag.cpp` nemá smysl: hra dostává od systému „pořád dole“ ze
-  všech stran.
-- Pozorování: přišpendlený ukazatel posílá po každém `SetCursorPos` další `WM_MOUSEMOVE`,
-  v logu 1 asi 50 vrácení za sekundu, i když se ukazatel hýbe jen o 1 px. Chybu to nevysvětluje, ale může to souviset
-  s bodem 3 (posun ukazatele v X serveru).
+## 5. Oprava (Winlator DL, commit `3ba19e2`)
+
+Když už je tlačítko držené a stejný klient chce grab na okno, které je předkem okna
+s tlačítkovým grabem (tedy grab od `SetCursorPos`), X server ho potvrdí, ale tlačítkový
+grab nechá. Následný `UngrabPointer` pak nic nesmaže. Puštění tak vždy dostane okno hry.
+Odpadnou i zdvojené pohyby. Grab od Wine pro `ClipCursor` a posuny bez drženého tlačítka
+se chovají jako dřív.
+
+Test `app/src/test/java/com/winlator/StuckRightButtonGrabTest.java` pouští skutečný kód
+X serveru (`GrabRequests.grabPointer`, `WindowRequests.warpPointer`, `ungrabPointer`)
+s okny, jaká vytváří Wine. Bez opravy: 2 z 5 selžou (puštění dostane okno 0x200001 =
+plocha místo 0x400001 = hra; po prvním posunu tlačítko nemá grab). S opravou: 5 z 5.
+
+## 6. Pro hru
+
+- Ladění myši je výborné, bez něj by se příčina nenašla. Prosím nechat ho tam.
+- Chyba je ve Winlatoru a je opravená tam. Hra nic měnit nemusí.
+- Kdyby se to mělo zmírnit i ze strany hry (pro jiné Winlatory a Wine bez naší opravy):
+  volat `SetCursorPos` méně často, třeba až když ukazatel uteče o několik px, ne při
+  každém 1px pohybu. Každé volání otevírá to okénko.
+- Hráč říká, že na PC se to dělo taky. Na skutečných Windows `SetCursorPos` žádný grab
+  nedělá, takže tahle chyba tam nastat nemohla. Pokud se na PC tlačítko zasekávalo, byla
+  to jiná chyba.
