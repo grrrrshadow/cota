@@ -47,11 +47,23 @@ Podrobně v **`MYS-REPORT.md`** (ve stejném repu). Krátce:
 ## 3. Box64 (emulace procesoru)
 
 - Zapnutá **DynaCache**: přeložený kód se ukládá na disk, takže od druhého spuštění by se
-  mělo méně trhat, když hra poprvé narazí na nový kód. Do Box64 0.4.4 jsme přidali 4 opravy
-  cache z novějšího vývoje.
-- Cache se uloží, jen když se hra ukončí sama (Quit ve hře). Tlačítko Exit ve Winlatoru
-  procesy zabije a cache se neuloží.
+  mělo méně trhat, když hra poprvé narazí na nový kód. Box64 je náš build `0.4.4-dl`:
+  0.4.4 + 4 opravy cache z novějšího vývoje + 3 naše (načítání cache pod zámkem, cache se
+  nesmaže, když soubor jen někdo čte, atomický čítač) + úsporný režim paměti jako dřív.
+- **Exit ve Winlatoru** teď hře nejdřív pošle SIGQUIT: Box64 uloží cache, wineserver uloží
+  registr, a do 2 s je konec jako dřív.
+- Při Quit ve hře se cache u velké hry nemusí stihnout uložit: wineserver proces po ~0,5 s
+  zabije. Cache se tím nerozbije, jen se neaktualizuje. Exit ve Winlatoru to obchází.
 - Hra běží jen na **velkých jádrech** (A78) a od samého startu, ne až od prvního okna.
 - Sekci pro `openttd.exe` v nastavení Box64 jsme schválně nedělali, nastavení je obecné.
 - Trhání simulace (Game loop) tím nezmizí, to je výkon procesoru přes Box64. Kreslení se
   měří zvlášť: v okně Frame rate ve hře je vidět, co zrovna brzdí.
+
+## 4. Log (od buildu 18. 10.)
+
+- `Documents/WinlatorDL/session.txt` se píše vždycky. Na začátku je blok `[DL]` (telefon,
+  GPU, jádra, ovladače a jejich nastavení, proměnné k OpenGL), pak chyby OpenGL z Mesy
+  (VirGL, Zink) s názvem funkce, chyby Wine a hlášky při pádu. Na Gladiu řádek, o jakou
+  verzi OpenGL si hra řekla a jestli ji dostala.
+- Předchozí spuštění zůstane jako `session-previous.txt`, pád Winlatoru v `crash.txt`.
+- Pro hru: když hra něco zapíše na stderr (třeba `-d driver=2`), objeví se to tam taky.
