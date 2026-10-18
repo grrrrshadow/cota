@@ -2643,11 +2643,15 @@ void gd_handle_glTexImage2D(GLContext* context) {
     else {
         void* imageData = NULL;
         RING_READ_BEGIN(context->serverRing, imageData, imageSize);
+        GLenum sentType = type;
         GLint unpackAlignment = 0;
         if (convertTexImageFormat(target, &internalformat, &format, &type, &imageData, imageSize)) {
             glGetIntegerv(GL_UNPACK_ALIGNMENT, &unpackAlignment);
             glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         }
+        // Unsized depth is uploaded as GL_UNSIGNED_INT, which would misread (or read past) the
+        // 8/16-bit or float values the guest sent, so the texture stays uninitialized as before
+        else if (format == GL_DEPTH_COMPONENT && type != sentType) imageData = NULL;
         glTexImage2D(target, level, internalformat, width, height, border, format, type, imageData);
         if (unpackAlignment > 0) glPixelStorei(GL_UNPACK_ALIGNMENT, unpackAlignment);
         RING_READ_END(context->serverRing);
@@ -2696,11 +2700,13 @@ void gd_handle_glTexImage3D(GLContext* context) {
     else {
         void* imageData = NULL;
         RING_READ_BEGIN(context->serverRing, imageData, imageSize);
+        GLenum sentType = type;
         GLint unpackAlignment = 0;
         if (convertTexImageFormat(target, &internalformat, &format, &type, &imageData, imageSize)) {
             glGetIntegerv(GL_UNPACK_ALIGNMENT, &unpackAlignment);
             glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         }
+        else if (format == GL_DEPTH_COMPONENT && type != sentType) imageData = NULL;
         glTexImage3D(target, level, internalformat, width, height, depth, border, format, type, imageData);
         if (unpackAlignment > 0) glPixelStorei(GL_UNPACK_ALIGNMENT, unpackAlignment);
         RING_READ_END(context->serverRing);

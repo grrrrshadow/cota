@@ -1462,10 +1462,15 @@ static void readPixels(GLRenderer* renderer, GLint x, GLint y, GLsizei width, GL
                 break;
             default:
                 println("gladio:readPixels: unimplemented format %x", format);
+                memset(dstData, 0, computeTexImageDataSize(format, type, width, height, 1));
                 break;
         }
     }
-    else println("gladio:readPixels: unimplemented type %x", type);
+    else {
+        // Depth and float reads have a size now, give zeros rather than whatever the ring held
+        println("gladio:readPixels: unimplemented type %x", type);
+        memset(dstData, 0, computeTexImageDataSize(format, type, width, height, 1));
+    }
 
     if (convert) free(srcData);
 
