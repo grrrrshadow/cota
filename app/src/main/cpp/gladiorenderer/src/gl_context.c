@@ -175,8 +175,10 @@ static void* requestHandlerThread(void* param) {
             case REQUEST_CODE_SWAP_DISPLAY_BUFFERS: {
                 int drawableId = ArrayBuffer_getInt(&context->inputBuffer);
                 currentRenderer->frameCount++;
-                swapDisplayBuffers(context, drawableId);
+                // The reply carries no data and requests are handled in order, so the guest can
+                // already queue the next frame while this one is copied to the window
                 gl_send(context->clientRing, REQUEST_CODE_SWAP_DISPLAY_BUFFERS, NULL, 0);
+                swapDisplayBuffers(context, drawableId);
                 break;
             }
             default: {
