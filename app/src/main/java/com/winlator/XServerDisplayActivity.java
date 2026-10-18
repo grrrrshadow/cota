@@ -106,6 +106,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class XServerDisplayActivity extends AppCompatActivity implements NavigationView.OnNavigationItemSelectedListener {
     private XServerView xServerView;
@@ -141,6 +142,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     public int frameRatingWindowId = -1;
     private Win32AppWorkarounds win32AppWorkarounds;
     private String screenEffectProfile;
+    private final AtomicBoolean exiting = new AtomicBoolean();
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -431,18 +433,31 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     }
 
     private void exit() {
+        // The launcher's termination callback calls this too, also when Wine ends because of the exit below.
+        if (!exiting.compareAndSet(false, true)) return;
         winHandler.stop();
-        if (environment != null) environment.stopEnvironmentComponents();
 
-        Intent intent = getIntent();
-        if (intent.hasExtra("exec_path")) {
-            AppUtils.RestartApplicationOptions options = new AppUtils.RestartApplicationOptions();
-            options.containerId = container.id;
-            options.startPath = FileUtils.getDirname(intent.getStringExtra("exec_path"));
-            AppUtils.restartApplication(this, options);
-        }
-        else AppUtils.restartApplication(this);
-        ForegroundService.stopSession(this);
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                // Restarting the app kills every process, so give box64 and wineserver a moment to save first.
+                ProcessHelper.terminateGuestProcesses(2000);
+            }
+            finally {
+                runOnUiThread(() -> {
+                    if (environment != null) environment.stopEnvironmentComponents();
+
+                    Intent intent = getIntent();
+                    if (intent.hasExtra("exec_path")) {
+                        AppUtils.RestartApplicationOptions options = new AppUtils.RestartApplicationOptions();
+                        options.containerId = container.id;
+                        options.startPath = FileUtils.getDirname(intent.getStringExtra("exec_path"));
+                        AppUtils.restartApplication(this, options);
+                    }
+                    else AppUtils.restartApplication(this);
+                    ForegroundService.stopSession(this);
+                });
+            }
+        });
     }
 
     private void setupWineSystemFiles() {

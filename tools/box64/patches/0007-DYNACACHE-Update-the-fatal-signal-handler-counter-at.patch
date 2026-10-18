@@ -1,0 +1,82 @@
+From d02e2cff5b684f1aea594e96e749a1658f1e8763 Mon Sep 17 00:00:00 2001
+From: Winlator DL <build@localhost>
+Date: Sun, 18 Oct 2026 07:13:26 +0000
+Subject: [PATCH] [DYNACACHE] Update the fatal signal handler counter
+ atomically
+
+box64_in_fatal_handler is changed by every thread that runs a guest
+SIGSEGV/SIGBUS/SIGILL/SIGFPE handler, and #4482 uses a plain ++/--. When
+two threads fault at the same time (Wine and JIT runtimes catch SIGSEGV on
+purpose) an update is lost, the counter stays non-zero and no DynaCache
+file is written for the rest of the process.
+---
+ src/libtools/signal32.c     | 4 ++--
+ src/libtools/signals.c      | 4 ++--
+ src/os/emit_signals_linux.c | 4 ++--
+ src/tools/dynacache.c       | 2 +-
+ 4 files changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/src/libtools/signal32.c b/src/libtools/signal32.c
+index 8c9586c..87be819 100644
+--- a/src/libtools/signal32.c
++++ b/src/libtools/signal32.c
+@@ -725,9 +725,9 @@ int my_sigactionhandler_oldcode_32(x64emu_t* emu, int32_t sig, int simple, sigin
+         dynarec = BOX64ENV(dynarec_interp_signal)?0:1;
+     #endif
+     int in_fatal = (sig==X64_SIGSEGV) || (sig==X64_SIGBUS) || (sig==X64_SIGILL) || (sig==X64_SIGFPE);
+-    if(in_fatal) ++box64_in_fatal_handler;
++    if(in_fatal) __atomic_add_fetch(&box64_in_fatal_handler, 1, __ATOMIC_SEQ_CST);
+     ret = RunFunctionHandler32(&exits, dynarec, sigcontext, my_context->signals[info2->si_signo], 3, info2->si_signo, info2, sigcontext);
+-    if(in_fatal && !exits && !emu->quit) --box64_in_fatal_handler;
++    if(in_fatal && !exits && !emu->quit) __atomic_sub_fetch(&box64_in_fatal_handler, 1, __ATOMIC_SEQ_CST);
+     // restore old value from emu
+     if(used_stack)  // release stack
+         new_ss->ss_flags = 0;
+diff --git a/src/libtools/signals.c b/src/libtools/signals.c
+index 8a3470d..3a90f1a 100644
+--- a/src/libtools/signals.c
++++ b/src/libtools/signals.c
+@@ -552,9 +552,9 @@ int my_sigactionhandler_oldcode_64(x64emu_t* emu, int32_t sig, int simple, sigin
+         dynarec = BOX64ENV(dynarec_interp_signal)?0:1;
+     #endif
+     int in_fatal = (sig==X64_SIGSEGV) || (sig==X64_SIGBUS) || (sig==X64_SIGILL) || (sig==X64_SIGFPE);
+-    if(in_fatal) ++box64_in_fatal_handler;
++    if(in_fatal) __atomic_add_fetch(&box64_in_fatal_handler, 1, __ATOMIC_SEQ_CST);
+     ret = RunFunctionHandler(emu, &exits, dynarec, sigcontext, my_context->signals[info2->si_signo], 3, info2->si_signo, info2, sigcontext);
+-    if(in_fatal && !exits && !emu->quit) --box64_in_fatal_handler;
++    if(in_fatal && !exits && !emu->quit) __atomic_sub_fetch(&box64_in_fatal_handler, 1, __ATOMIC_SEQ_CST);
+     if(used_stack)  // release stack
+         new_ss->ss_flags = 0;
+     // restore old value from emu
+diff --git a/src/os/emit_signals_linux.c b/src/os/emit_signals_linux.c
+index fa33e9c..6b4e9da 100644
+--- a/src/os/emit_signals_linux.c
++++ b/src/os/emit_signals_linux.c
+@@ -264,9 +264,9 @@ void EmitWineInt(x64emu_t* emu, int num, void* addr)
+         int exits = 0;
+         int ret;
+         int in_fatal = (sig==X64_SIGSEGV) || (sig==X64_SIGBUS) || (sig==X64_SIGILL) || (sig==X64_SIGFPE);
+-        if(in_fatal) ++box64_in_fatal_handler;
++        if(in_fatal) __atomic_add_fetch(&box64_in_fatal_handler, 1, __ATOMIC_SEQ_CST);
+         ret = RunFunctionHandler(emu, &exits, 2, sigcontext, my_context->signals[info2->si_signo], 3, info2->si_signo, info2, sigcontext);
+-        if(in_fatal && !exits && !emu->quit) --box64_in_fatal_handler;
++        if(in_fatal && !exits && !emu->quit) __atomic_sub_fetch(&box64_in_fatal_handler, 1, __ATOMIC_SEQ_CST);
+         if(used_stack)  // release stack
+             new_ss->ss_flags = 0;
+         // restore values
+diff --git a/src/tools/dynacache.c b/src/tools/dynacache.c
+index 51e27d2..9e4566a 100644
+--- a/src/tools/dynacache.c
++++ b/src/tools/dynacache.c
+@@ -436,7 +436,7 @@ void SerializeMmaplist(mapping_t* mapping)
+     (void)mapping;
+     return;
+     #else
+-    if(box64_in_fatal_handler) return;
++    if(__atomic_load_n(&box64_in_fatal_handler, __ATOMIC_SEQ_CST)) return;
+     if(!DYNAREC_VERSION)
+         return;
+     if(mapping->env && mapping->env->is_dynacache_overridden && (mapping->env->dynacache!=1))
+-- 
+2.43.0
+
