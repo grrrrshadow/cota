@@ -16,6 +16,9 @@ public class ZinkConfigDialog extends ContentDialog {
     // Bruno's build, kept for games that worked with it; its version under Vortek was always overridden to 3.3.
     public static final String LEGACY_VERSION = "22.2.5";
     public static final String[] VERSIONS = {DefaultVersion.ZINK, LEGACY_VERSION};
+    // Not "glVersion": the OpenGL slot keeps VirGL's config after switching to Zink until this dialog is confirmed,
+    // and VirGL always saves its glVersion (3.1 by default), which would silently cap Zink.
+    private static final String GL_VERSION_KEY = "glVersionOverride";
 
     public ZinkConfigDialog(final View anchor) {
         super(anchor.getContext(), R.layout.zink_config_dialog);
@@ -34,9 +37,9 @@ public class ZinkConfigDialog extends ContentDialog {
         setOnConfirmCallback(() -> {
             KeyValueSet newConfig = new KeyValueSet();
             newConfig.put("version", sVersion.getSelectedItem());
-            // "Auto" is stored as no glVersion at all.
+            // "Auto" is stored as no GL version at all.
             String glVersion = StringUtils.parseNumber(sGLVersion.getSelectedItem());
-            if (!glVersion.isEmpty()) newConfig.put("glVersion", glVersion);
+            if (!glVersion.isEmpty()) newConfig.put(GL_VERSION_KEY, glVersion);
             anchor.setTag(newConfig.toString());
         });
     }
@@ -48,7 +51,7 @@ public class ZinkConfigDialog extends ContentDialog {
     }
 
     private static String getGLVersion(KeyValueSet config) {
-        String glVersion = config.get("glVersion");
+        String glVersion = config.get(GL_VERSION_KEY);
         try {
             return !glVersion.isEmpty() && Float.parseFloat(glVersion) > 0 ? glVersion : "";
         }

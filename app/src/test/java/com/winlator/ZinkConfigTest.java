@@ -15,6 +15,7 @@ import com.winlator.container.Container;
 import com.winlator.container.GraphicsDriverPicker;
 import com.winlator.container.GraphicsDrivers;
 import com.winlator.container.Shortcut;
+import com.winlator.contentdialog.VirGLConfigDialog;
 import com.winlator.contentdialog.ZinkConfigDialog;
 import com.winlator.core.DefaultVersion;
 import com.winlator.core.EnvVars;
@@ -122,7 +123,7 @@ public class ZinkConfigTest {
     public void autoIsStoredAsNoGLVersion() {
         Context context = themedContext();
         LinearLayout layout = new LinearLayout(context);
-        GraphicsDriverPicker picker = new GraphicsDriverPicker(layout, "vortek,zink", "|version=22.2.5,glVersion=4.5");
+        GraphicsDriverPicker picker = new GraphicsDriverPicker(layout, "vortek,zink", "|version=22.2.5,glVersionOverride=4.5");
 
         Dialog dialog = openZinkDialog(layout);
         Spinner version = dialog.findViewById(R.id.SVersion);
@@ -143,16 +144,16 @@ public class ZinkConfigTest {
         assertFalse(envVars("", true).has("MESA_GL_VERSION_OVERRIDE"));
         assertFalse(envVars("version=26.2.5", true).has("MESA_GL_VERSION_OVERRIDE"));
         assertFalse(envVars("version=26.2.5", false).has("MESA_GL_VERSION_OVERRIDE"));
-        assertEquals("4.6", envVars("version=26.2.5,glVersion=4.6", true).get("MESA_GL_VERSION_OVERRIDE"));
-        assertEquals("3.3", envVars("version=26.2.5,glVersion=3.3", false).get("MESA_GL_VERSION_OVERRIDE"));
+        assertEquals("4.6", envVars("version=26.2.5,glVersionOverride=4.6", true).get("MESA_GL_VERSION_OVERRIDE"));
+        assertEquals("3.3", envVars("version=26.2.5,glVersionOverride=3.3", false).get("MESA_GL_VERSION_OVERRIDE"));
 
         // 22.2.5: today's behaviour, 3.3 under Vortek unless the dialog has a version.
         assertEquals("3.3", envVars("version=22.2.5", true).get("MESA_GL_VERSION_OVERRIDE"));
         assertFalse(envVars("version=22.2.5", false).has("MESA_GL_VERSION_OVERRIDE"));
-        assertEquals("4.1", envVars("version=22.2.5,glVersion=4.1", true).get("MESA_GL_VERSION_OVERRIDE"));
+        assertEquals("4.1", envVars("version=22.2.5,glVersionOverride=4.1", true).get("MESA_GL_VERSION_OVERRIDE"));
 
         // A broken or unknown value falls back to the defaults.
-        assertFalse(envVars("version=26.2.5,glVersion=abc", true).has("MESA_GL_VERSION_OVERRIDE"));
+        assertFalse(envVars("version=26.2.5,glVersionOverride=abc", true).has("MESA_GL_VERSION_OVERRIDE"));
         assertEquals(DefaultVersion.ZINK, ZinkConfigDialog.getVersion(new KeyValueSet("version=23.0")));
         assertEquals("26.2.5", ZinkConfigDialog.getVersion(new KeyValueSet("")));
 
@@ -200,6 +201,36 @@ public class ZinkConfigTest {
         // The container itself keeps its own choice.
         KeyValueSet containerConfig = GraphicsDrivers.parseConfigs(container.getGraphicsDriver(), container.getGraphicsDriverConfig())[1];
         assertEquals("26.2.5", ZinkConfigDialog.getVersion(containerConfig));
+    }
+
+    @Test
+    public void otherDriversSettingsInTheSlotAreIgnored() {
+        // The OpenGL box keeps the previous driver's config until that driver's dialog is confirmed:
+        // a VirGL container (VirGL always saves glVersion, 3.1 by default) switched to Zink and saved as it is.
+        Context context = themedContext();
+        LinearLayout layout = new LinearLayout(context);
+        GraphicsDriverPicker picker = new GraphicsDriverPicker(layout, "vortek,virgl", "|glVersion=4.0,disableVertexArrayBGRA=1,coreProfile=1");
+        openGLBox(layout).setSelectedItem("Zink");
+        assertEquals("vortek,zink", picker.getGraphicsDriver());
+
+        KeyValueSet openGLConfig = GraphicsDrivers.parseConfigs(picker.getGraphicsDriver(), picker.getGraphicsDriverConfig())[1];
+        assertFalse(envVars(openGLConfig.toString(), true).has("MESA_GL_VERSION_OVERRIDE"));
+        assertFalse(envVars("glVersion=3.1,disableVertexArrayBGRA=1,coreProfile=0", true).has("MESA_GL_VERSION_OVERRIDE"));
+        assertEquals(DefaultVersion.ZINK, ZinkConfigDialog.getVersion(openGLConfig));
+
+        Dialog dialog = openZinkDialog(layout);
+        Spinner glVersion = dialog.findViewById(R.id.SGLVersion);
+        assertEquals("26.2.5", ((Spinner)dialog.findViewById(R.id.SVersion)).getSelectedItem().toString());
+        assertEquals("Auto", glVersion.getSelectedItem().toString());
+
+        // And the other way round: Zink's choice does not become VirGL's version.
+        glVersion.setSelection(indexOf(glVersion, "4.6"));
+        dialog.findViewById(R.id.BTConfirm).performClick();
+        openGLBox(layout).setSelectedItem("VirGL");
+        KeyValueSet virglConfig = GraphicsDrivers.parseConfigs(picker.getGraphicsDriver(), picker.getGraphicsDriverConfig())[1];
+        EnvVars virglEnvVars = new EnvVars();
+        VirGLConfigDialog.setEnvVars(virglConfig, virglEnvVars);
+        assertEquals(VirGLConfigDialog.DEFAULT_GL_VERSION, virglEnvVars.get("MESA_GL_VERSION_OVERRIDE"));
     }
 
     @Test
