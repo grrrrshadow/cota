@@ -36,8 +36,11 @@ Podrobně v **`MYS-REPORT.md`** (ve stejném repu). Krátce:
   VirGL na tomhle telefonu neumí, takže by hra hlásila „Can't get pointer to screen
   buffer“. V nastavení už verze nad 4.3 nejsou. Core profile hra nepotřebuje, o core
   kontext si řekne sama.
-- **Rozpracováno:** Zink z Mesa 26.2.5 (OpenGL 4.x přes Vulkan). Ten persistent mapping
-  umí, takže tam by hra mohla jet i na 4.4+. Na telefonu zatím nevyzkoušeno.
+- **Zink z Mesa 25.1.9** (build 12+). Novější Mesa s Vortekem na tomhle telefonu nenastartuje
+  (od 25.2 chce `VK_EXT_robustness2`, ten Mali nemá). Sám od sebe hlásí jen GL 3.1 (Mali
+  nemá depth clip), proto „Auto“ pod Vortekem dává 3.3. Persistent mapping Zink umí, takže
+  s ručně nastavenou 4.4+ by hra mohla jet i s ním, ale je to mimo to, co Mali opravdu umí.
+  Na telefonu zatím nevyzkoušeno.
 - **Gladio** (vlastní OpenGL Winlatoru) má chybu, která se hry týká přímo: velikost
   uploadu textury nebere ohled na `GL_UNPACK_ALIGNMENT`. Sprity R8 od hry
   (`opengl.cpp:1518-1529`, řádek zarovnaný na 4) pak mají spodní řádky smetí. Opravujeme
