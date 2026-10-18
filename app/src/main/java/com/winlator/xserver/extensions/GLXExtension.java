@@ -45,6 +45,14 @@ public class GLXExtension extends Extension {
         super(xServer, majorOpcode);
     }
 
+    // Kept apart from GLXExtension so it can be used without loading the native library
+    static abstract class ContextVersion {
+        // Gladio provides OpenGL 3.3, which also covers every 1.x and 2.x context
+        static boolean isSupported(int majorVersion, int minorVersion) {
+            return majorVersion >= 1 && (majorVersion < 3 || (majorVersion == 3 && minorVersion <= 3));
+        }
+    }
+
     private static abstract class ClientOpcodes {
         private static final byte CREATE_GL_CONTEXT = 1;
         private static final byte DESTROY_GL_CONTEXT = 2;
@@ -264,7 +272,7 @@ public class GLXExtension extends Extension {
             else if (name == GLXEnums.GLX_CONTEXT_MINOR_VERSION_ARB) glMinorVersion = value;
         }
 
-        boolean success = glMajorVersion <= 3 && glMinorVersion <= 3;
+        boolean success = ContextVersion.isSupported(glMajorVersion, glMinorVersion);
         if (success) createGLXContextForClient(client, contextId, shareContext);
 
         try (XStreamLock lock = outputStream.lock()) {
