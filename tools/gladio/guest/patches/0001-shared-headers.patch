@@ -1,0 +1,183 @@
+Shared headers, kept identical to app/src/main/cpp/gladiorenderer/include (build-guest.sh checks it):
+- upload sizes honour GL_UNPACK_ALIGNMENT/ROW_LENGTH/SKIP_* (computePixelStoreDataSize), so the
+  guest sends exactly the bytes the host's GLES driver reads (OpenTTD's 4-byte aligned R8 sprites
+  lost their last rows before)
+- pixel store state for unpack alignment/skips and the pack state in GLClientState
+- 4-byte packed vertex formats (2_10_10_10, 10F_11F_11F) and GL_FIXED have a size
+- depth/stencil and packed 32/64-bit pixel types have a size, GL_TEXTURE_BINDING_3D maps to 3D
+- convertTexImageFormat reports when it repacked the data (host only code, the guest library
+  does not change)
+
+--- a/include/gl_client_state.h
++++ b/include/gl_client_state.h
+@@ -39,6 +39,14 @@
+     struct {
+         short unpackRowLength;
+         short unpackImageHeight;
++        int unpackAlignment;
++        int unpackSkipPixels;
++        int unpackSkipRows;
++        int unpackSkipImages;
++        int packRowLength;
++        int packAlignment;
++        int packSkipPixels;
++        int packSkipRows;
+     } pixelStore;
+ #endif
+ 
+--- a/include/gl_vao.h
++++ b/include/gl_vao.h
+@@ -50,7 +50,7 @@
+         pointer = arrayBuffer->mappedData + (uint64_t)pointer; \
+     } \
+     GLVertexArrayObject_setAttribState(clientState, index, VERTEX_ATTRIB_LEGACY_ENABLED, false); \
+-    clientState->vao->attribs[index].stride = stride > 0 ? stride : (size * sizeofGLType(type)); \
++    clientState->vao->attribs[index].stride = stride > 0 ? stride : sizeofVertexAttrib(size, type); \
+     clientState->vao->attribs[index].pointer = pointer; \
+     ArrayBuffer_rewind(&outputBuffer); \
+     ArrayBuffer_put(&outputBuffer, size); \
+@@ -71,7 +71,7 @@
+         clientState->vao->attribs[arrayIdx].size = size; \
+         clientState->vao->attribs[arrayIdx].type = type; \
+         clientState->vao->attribs[arrayIdx].normalized = type != GL_FLOAT && type != GL_HALF_FLOAT && hasBoundProgram; \
+-        clientState->vao->attribs[arrayIdx].stride = stride > 0 || hasBoundProgram ? stride : (size * sizeofGLType(type)); \
++        clientState->vao->attribs[arrayIdx].stride = stride > 0 || hasBoundProgram ? stride : sizeofVertexAttrib(size, type); \
+     } \
+     while (0)
+ 
+--- a/include/gladio.h
++++ b/include/gladio.h
+@@ -226,9 +226,11 @@
+         GLBuffer* pixelUnpackBuffer = GLBuffer_getBound(GL_PIXEL_UNPACK_BUFFER); \
+         int dataSize = compressedSize; \
+         if (compressedSize == 0) { \
+-            if (clientState->pixelStore.unpackRowLength > 0) width = clientState->pixelStore.unpackRowLength; \
+-            if (clientState->pixelStore.unpackImageHeight > 0) height = clientState->pixelStore.unpackImageHeight; \
+-            dataSize = imageData && !pixelUnpackBuffer ? computeTexImageDataSize(format, type, width, height, depth) : 0; \
++            bool is3D = requestCode == REQUEST_CODE_GL_TEX_IMAGE3D || requestCode == REQUEST_CODE_GL_TEX_SUB_IMAGE3D; \
++            dataSize = imageData && !pixelUnpackBuffer ? computePixelStoreDataSize(format, type, width, height, depth, \
++                clientState->pixelStore.unpackRowLength, is3D ? clientState->pixelStore.unpackImageHeight : 0, \
++                clientState->pixelStore.unpackAlignment, clientState->pixelStore.unpackSkipPixels, \
++                clientState->pixelStore.unpackSkipRows, is3D ? clientState->pixelStore.unpackSkipImages : 0) : 0; \
+             ArrayBuffer_putInt(&outputBuffer, dataSize); \
+         } \
+         else ArrayBuffer_putInt(&outputBuffer, compressedSize); \
+@@ -251,6 +253,7 @@
+             return sizeof(GLshort);
+         case GL_INT:
+         case GL_UNSIGNED_INT:
++        case GL_FIXED:
+             return sizeof(GLint);
+         case GL_HALF_FLOAT:
+             return sizeof(GLhalf);
+@@ -263,6 +266,17 @@
+     }
+ }
+ 
++static inline int sizeofVertexAttrib(GLint size, GLenum type) {
++    switch (type) {
++        case GL_INT_2_10_10_10_REV:
++        case GL_UNSIGNED_INT_2_10_10_10_REV:
++        case GL_UNSIGNED_INT_10F_11F_11F_REV:
++            return 4;
++    }
++    if (size == GL_BGRA) size = 4;
++    return MIN(4, size) * sizeofGLType(type);
++}
++
+ static inline uint8_t indexOfGLTarget(GLenum target) {
+     switch (target) {
+         case GL_TEXTURE_2D:
+--- a/include/texture_utils.h
++++ b/include/texture_utils.h
+@@ -136,6 +136,11 @@
+         case GL_BGRA_INTEGER:
+             channels = 4;
+             break;
++        case GL_DEPTH_COMPONENT:
++        case GL_STENCIL_INDEX:
++        case GL_DEPTH_STENCIL:
++            channels = 1;
++            break;
+     }
+ 
+     switch (type) {
+@@ -170,14 +175,41 @@
+         case GL_UNSIGNED_INT_8_8_8_8:
+         case GL_UNSIGNED_INT_8_8_8_8_REV:
+         case GL_UNSIGNED_INT_10_10_10_2:
++        case GL_UNSIGNED_INT_2_10_10_10_REV:
++        case GL_UNSIGNED_INT_24_8:
++        case GL_UNSIGNED_INT_10F_11F_11F_REV:
++        case GL_UNSIGNED_INT_5_9_9_9_REV:
+             channels = 1;
+             bytesPerPixel = 4;
+             break;
++        case GL_FLOAT_32_UNSIGNED_INT_24_8_REV:
++            channels = 1;
++            bytesPerPixel = 8;
++            break;
+     }
+ 
+     return width * height * depth * channels * bytesPerPixel;
+ }
+ 
++// Distance in bytes between two rows of pixel data laid out with glPixelStorei row length/alignment
++static inline int computePixelRowStride(uint32_t format, uint32_t type, int width, int rowLength, int alignment) {
++    int rowSize = (rowLength > 0 ? rowLength : width) * computeTexImageDataSize(format, type, 1, 1, 1);
++    if (alignment <= 0) alignment = 4;
++    return (rowSize + alignment - 1) / alignment * alignment;
++}
++
++// Bytes from the start of client pixel data to the end of its last pixel, honouring the pixel store
++// state (imageHeight and skipImages only apply to 3D images, pass 0 for others)
++static inline int computePixelStoreDataSize(uint32_t format, uint32_t type, int width, int height, int depth, int rowLength, int imageHeight, int alignment, int skipPixels, int skipRows, int skipImages) {
++    int bytesPerPixel = computeTexImageDataSize(format, type, 1, 1, 1);
++    if (bytesPerPixel == 0 || width <= 0 || height <= 0 || depth <= 0) return 0;
++
++    int rowStride = computePixelRowStride(format, type, width, rowLength, alignment);
++    int imageStride = rowStride * (imageHeight > 0 ? imageHeight : height);
++    return skipImages * imageStride + skipRows * rowStride + skipPixels * bytesPerPixel +
++           (depth - 1) * imageStride + (height - 1) * rowStride + width * bytesPerPixel;
++}
++
+ #ifdef __ANDROID__
+ static inline bool isCompressedFormat(GLenum format) {
+     switch (format) {
+@@ -191,9 +223,12 @@
+     }
+ }
+ 
+-static inline void convertTexImageFormat(uint32_t target, int* internalformat, uint32_t* format, uint32_t* type, void** imageData, int imageSize) {
++// Returns true when imageData was repacked to one byte per pixel, its rows are then tightly packed
++// whatever unpack alignment the guest uses
++static inline bool convertTexImageFormat(uint32_t target, int* internalformat, uint32_t* format, uint32_t* type, void** imageData, int imageSize) {
+     int none = GL_NONE;
+     if (!internalformat) internalformat = &none;
++    bool repacked = false;
+ 
+ #if IS_DEBUG_ENABLED(DEBUG_MODE_TEXTURE_FORMAT)
+     static SparseArray debugFormats = {0};
+@@ -376,11 +411,13 @@
+                 for (int i = 0; i < imageSize; i++) alphaPixels[i] = pixels[i*4];
+                 memcpy(*imageData, alphaPixels, imageSize);
+                 free(alphaPixels);
++                repacked = true;
+             }
+         }
+     }
+ 
+     if (*format == GL_BGRA) *internalformat = GL_BGRA;
++    return repacked;
+ }
+ #endif
+ 
+@@ -413,7 +450,7 @@
+         case GL_TEXTURE_BINDING_RECTANGLE:
+             return GL_TEXTURE_2D;
+         case GL_TEXTURE_BINDING_3D:
+-            return GL_TEXTURE_2D;
++            return GL_TEXTURE_3D;
+         case GL_TEXTURE_BINDING_CUBE_MAP:
+             return GL_TEXTURE_CUBE_MAP;
+         case GL_TEXTURE_BINDING_2D_ARRAY:

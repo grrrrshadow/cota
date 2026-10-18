@@ -1,6 +1,7 @@
 #!/bin/bash
 # Builds the Box64 bundled in app/src/main/assets/box64: upstream v0.4.4 plus the DynaCache fixes in patches/
-# (cherry-picked from upstream main, they keep a crash or a stale block from poisoning the cache).
+# (0001-0004 cherry-picked from upstream main, they keep a crash or a stale block from poisoning the cache;
+# 0005-0007 are ours: a load race between threads, a valid cache deleted, saving silently stopping).
 # Needs Ubuntu 24.04 (glibc 2.39, same as the rootfs) with gcc-aarch64-linux-gnu, cmake, git and zstd.
 # Usage: tools/box64/build.sh [OUT.tzst]   (WORK=dir keeps the build tree)
 set -euo pipefail
@@ -9,16 +10,18 @@ OUT=$(realpath -m "${1:-$HERE/../../app/src/main/assets/box64/box64-0.4.4-dl.tzs
 WORK=${WORK:-$(mktemp -d)}
 
 [ -d "$WORK/src" ] || git -c advice.detachedHead=false clone -q --depth 1 --branch v0.4.4 https://github.com/ptitSeb/box64.git "$WORK/src"
-if ! git -C "$WORK/src" log --oneline | grep -q "DYNACACHE"; then
-  git -C "$WORK/src" -c user.name=build -c user.email=build@localhost am -q "$HERE"/patches/*.patch
-fi
+# Start again from the tag so a kept WORK picks up changed patches; only the patched files get rebuilt.
+git -C "$WORK/src" am --abort 2>/dev/null || true
+git -C "$WORK/src" reset -q --hard v0.4.4
+git -C "$WORK/src" -c user.name=build -c user.email=build@localhost am -q --keep-non-patch "$HERE"/patches/*.patch
 
-# Same options as upstream's ANDROID_GLIBC release job. The interpreter and runpath must be set at link time:
+# Same options as upstream's ANDROID_GLIBC release job, plus SAVE_MEM like the box64 Winlator 11 shipped (without it
+# a game's box64 processes use about a quarter more memory). The interpreter and runpath must be set at link time:
 # patching them later with patchelf adds a segment below box64's fixed base address and it crashes.
 # /data/data/com.winlator is rewritten to /data/data/org.winlator when the app extracts the file.
 cmake -S "$WORK/src" -B "$WORK/build" -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
   -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_BUILD_TYPE=Release -DNOGIT=1 \
-  -DARM64=1 -DWINLATOR_GLIBC=1 -DARM_DYNAREC=1 -DBAD_SIGNAL=1 \
+  -DARM64=1 -DWINLATOR_GLIBC=1 -DARM_DYNAREC=1 -DBAD_SIGNAL=1 -DSAVE_MEM=1 \
   -DCMAKE_EXE_LINKER_FLAGS="-Wl,--dynamic-linker=/data/data/com.winlator/files/rootfs/lib/ld-linux-aarch64.so.1 -Wl,-rpath,/data/data/com.winlator/files/rootfs/lib" > "$WORK/cmake.log"
 make -C "$WORK/build" -j"$(nproc)" box64 > "$WORK/make.log" 2>&1
 

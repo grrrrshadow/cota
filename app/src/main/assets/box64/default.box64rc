@@ -1,3 +1,15 @@
+# Generic names from upstream's box64.box64rc, which BOX64_RCFILE replaces.
+[*setup*]
+# using safest dynarec settings here, as some installers do crazy things; they run once, so no DynaCache
+BOX64_DYNACACHE=0
+BOX64_DYNAREC_SAFEFLAGS=2
+
+[*install*]
+BOX64_DYNACACHE=0
+BOX64_DYNAREC_SAFEFLAGS=2
+BOX64_DYNAREC_BIGBLOCK=0
+BOX64_DYNAREC_CALLRET=0
+
 [steam.exe]
 BOX64_ENV=WINEARGS=-noshaders -nooverlay -no-browser -nocrashmonitor -no-shared-textures -cef-disable-gpu -cef-disable-gpu-compositing -cef-disable-gpu-sandbox -cef-disable-d3d11 -cef-disable-sandbox -no-cef-sandbox -cef-disable-seccomp-sandbox
 BOX64_ENV1=WINEDLLOVERRIDES=gameoverlayrenderer,gameoverlayrenderer64,gameoverlayui.exe,gameoverlayui64.exe,x86launcher.exe,x64launcher.exe,dxsetup.exe=d

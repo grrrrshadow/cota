@@ -226,9 +226,11 @@ static inline int getGLCallParamsCount(GLenum pname, bool* isColor) {
         GLBuffer* pixelUnpackBuffer = GLBuffer_getBound(GL_PIXEL_UNPACK_BUFFER); \
         int dataSize = compressedSize; \
         if (compressedSize == 0) { \
-            if (clientState->pixelStore.unpackRowLength > 0) width = clientState->pixelStore.unpackRowLength; \
-            if (clientState->pixelStore.unpackImageHeight > 0) height = clientState->pixelStore.unpackImageHeight; \
-            dataSize = imageData && !pixelUnpackBuffer ? computeTexImageDataSize(format, type, width, height, depth) : 0; \
+            bool is3D = requestCode == REQUEST_CODE_GL_TEX_IMAGE3D || requestCode == REQUEST_CODE_GL_TEX_SUB_IMAGE3D; \
+            dataSize = imageData && !pixelUnpackBuffer ? computePixelStoreDataSize(format, type, width, height, depth, \
+                clientState->pixelStore.unpackRowLength, is3D ? clientState->pixelStore.unpackImageHeight : 0, \
+                clientState->pixelStore.unpackAlignment, clientState->pixelStore.unpackSkipPixels, \
+                clientState->pixelStore.unpackSkipRows, is3D ? clientState->pixelStore.unpackSkipImages : 0) : 0; \
             ArrayBuffer_putInt(&outputBuffer, dataSize); \
         } \
         else ArrayBuffer_putInt(&outputBuffer, compressedSize); \
@@ -251,6 +253,7 @@ static inline int sizeofGLType(GLenum type) {
             return sizeof(GLshort);
         case GL_INT:
         case GL_UNSIGNED_INT:
+        case GL_FIXED:
             return sizeof(GLint);
         case GL_HALF_FLOAT:
             return sizeof(GLhalf);
@@ -261,6 +264,17 @@ static inline int sizeofGLType(GLenum type) {
         default:
             return 0;
     }
+}
+
+static inline int sizeofVertexAttrib(GLint size, GLenum type) {
+    switch (type) {
+        case GL_INT_2_10_10_10_REV:
+        case GL_UNSIGNED_INT_2_10_10_10_REV:
+        case GL_UNSIGNED_INT_10F_11F_11F_REV:
+            return 4;
+    }
+    if (size == GL_BGRA) size = 4;
+    return MIN(4, size) * sizeofGLType(type);
 }
 
 static inline uint8_t indexOfGLTarget(GLenum target) {

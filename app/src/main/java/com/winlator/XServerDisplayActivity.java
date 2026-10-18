@@ -8,6 +8,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.KeyEvent;
 import android.view.Menu;
@@ -46,14 +47,18 @@ import com.winlator.contentdialog.VirGLConfigDialog;
 import com.winlator.contentdialog.WineD3DConfigDialog;
 import com.winlator.contentdialog.ZinkConfigDialog;
 import com.winlator.core.AppUtils;
+import com.winlator.core.CPUStatus;
+import com.winlator.core.CrashLog;
 import com.winlator.core.DefaultVersion;
 import com.winlator.core.EnvVars;
 import com.winlator.core.FileUtils;
+import com.winlator.core.GPUHelper;
 import com.winlator.core.GeneralComponents;
 import com.winlator.core.KeyValueSet;
 import com.winlator.core.LocaleHelper;
 import com.winlator.core.PreloaderDialog;
 import com.winlator.core.ProcessHelper;
+import com.winlator.core.SessionLog;
 import com.winlator.core.StringUtils;
 import com.winlator.core.TarCompressorUtils;
 import com.winlator.core.Win32AppWorkarounds;
@@ -102,6 +107,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class XServerDisplayActivity extends AppCompatActivity implements NavigationView.OnNavigationItemSelectedListener {
     private XServerView xServerView;
@@ -137,11 +143,13 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     public int frameRatingWindowId = -1;
     private Win32AppWorkarounds win32AppWorkarounds;
     private String screenEffectProfile;
+    private final AtomicBoolean exiting = new AtomicBoolean();
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         AppUtils.setActivityTheme(this);
         super.onCreate(savedInstanceState);
+        CrashLog.install(this);
         AppUtils.hideSystemUI(this);
         AppUtils.keepScreenOn(this);
         setContentView(R.layout.xserver_display_activity);
@@ -158,6 +166,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         NavigationView navigationView = findViewById(R.id.NavigationView);
         ProcessHelper.removeAllDebugCallbacks();
+        ProcessHelper.addDebugCallback(new SessionLog());
         boolean enableLogs = preferences.getBoolean("enable_wine_debug", false) || preferences.getInt("box64_logs", 0) >= 1;
         if (enableLogs) ProcessHelper.addDebugCallback(debugDialog = new DebugDialog(this));
         Menu menu = navigationView.getMenu();
@@ -425,18 +434,31 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     }
 
     private void exit() {
+        // The launcher's termination callback calls this too, also when Wine ends because of the exit below.
+        if (!exiting.compareAndSet(false, true)) return;
         winHandler.stop();
-        if (environment != null) environment.stopEnvironmentComponents();
 
-        Intent intent = getIntent();
-        if (intent.hasExtra("exec_path")) {
-            AppUtils.RestartApplicationOptions options = new AppUtils.RestartApplicationOptions();
-            options.containerId = container.id;
-            options.startPath = FileUtils.getDirname(intent.getStringExtra("exec_path"));
-            AppUtils.restartApplication(this, options);
-        }
-        else AppUtils.restartApplication(this);
-        ForegroundService.stopSession(this);
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                // Restarting the app kills every process, so give box64 and wineserver a moment to save first.
+                ProcessHelper.terminateGuestProcesses(2000);
+            }
+            finally {
+                runOnUiThread(() -> {
+                    if (environment != null) environment.stopEnvironmentComponents();
+
+                    Intent intent = getIntent();
+                    if (intent.hasExtra("exec_path")) {
+                        AppUtils.RestartApplicationOptions options = new AppUtils.RestartApplicationOptions();
+                        options.containerId = container.id;
+                        options.startPath = FileUtils.getDirname(intent.getStringExtra("exec_path"));
+                        AppUtils.restartApplication(this, options);
+                    }
+                    else AppUtils.restartApplication(this);
+                    ForegroundService.stopSession(this);
+                });
+            }
+        });
     }
 
     private void setupWineSystemFiles() {
@@ -491,14 +513,14 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
     private void setupXEnvironment() {
         String rootPath = rootFS.getRootDir().getPath();
-        envVars.put("MESA_DEBUG", "silent");
-        envVars.put("MESA_NO_ERROR", "1");
+        // Mesa (VirGL, Zink) checks GL calls and prints each error with the function that caused it into the session log.
+        envVars.put("MESA_DEBUG", "1");
         envVars.put("WINEPREFIX", rootPath+RootFS.WINEPREFIX);
         envVars.put("WINE_DO_NOT_CREATE_DXGI_DEVICE_MANAGER", "1");
 
         boolean enableWineDebug = preferences.getBoolean("enable_wine_debug", false);
         String wineDebugChannels = preferences.getString("wine_debug_channels", SettingsFragment.DEFAULT_WINE_DEBUG_CHANNELS);
-        envVars.put("WINEDEBUG", enableWineDebug && !wineDebugChannels.isEmpty() ? "+"+wineDebugChannels.replace(",", ",+") : "-all");
+        envVars.put("WINEDEBUG", enableWineDebug && !wineDebugChannels.isEmpty() ? "+"+wineDebugChannels.replace(",", ",+") : "-all,err+all");
 
         FileUtils.clear(rootFS.getTmpDir());
 
@@ -565,6 +587,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             envVars.putAll(overrideEnvVars);
             overrideEnvVars = null;
         }
+        logSessionInfo(guestProgramLauncherComponent);
         environment.startEnvironmentComponents();
 
         winHandler.start();
@@ -715,6 +738,42 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
 
         inputControlsView.invalidate();
+    }
+
+    // The top of the log: what decides OpenGL/hardware acceleration and what Winlator DL changed, marked [DL].
+    private void logSessionInfo(GuestProgramLauncherComponent guestProgramLauncherComponent) {
+        ArrayList<String> lines = new ArrayList<>();
+        lines.add("===== Winlator DL "+CrashLog.getAppVersion(this)+" =====");
+        lines.add("Android "+Build.VERSION.RELEASE+" (API "+Build.VERSION.SDK_INT+"), "+Build.MANUFACTURER+" "+Build.MODEL+(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? ", SoC "+Build.SOC_MODEL : ""));
+        lines.add("GPU: "+GPUHelper.glGetRenderer(this)+" | "+GPUHelper.glGetVersion(this));
+
+        String bigCoreList = CPUStatus.getBigCoreList();
+        String cpuLine = "CPU: "+Runtime.getRuntime().availableProcessors()+" cores, big cores "+(bigCoreList != null ? bigCoreList : "not detected");
+        if (container != null) cpuLine += ", CPU list "+container.getCPUList(true)+", WoW64 CPU list "+container.getCPUListWoW64(true)+", launch affinity 0x"+Integer.toHexString(guestProgramLauncherComponent.getAffinityMask());
+        lines.add(cpuLine);
+
+        if (container != null) lines.add("Container: "+container.getName()+(shortcut != null ? ", shortcut: "+shortcut.name : ""));
+        lines.add("Wine: "+wineInfo+", screen "+screenInfo);
+        lines.add("Graphics: Vulkan="+graphicsDriver[0]+" {"+graphicsDriverConfig[0]+"}, OpenGL="+graphicsDriver[1]+" {"+graphicsDriverConfig[1]+"}");
+        if (dxwrapperConfig != null) lines.add("DX wrapper: "+dxwrapper+" {"+dxwrapperConfig[0]+"}"+(dxwrapperConfig.length > 1 ? " DX12 {"+dxwrapperConfig[1]+"}" : ""));
+
+        String box64Version = preferences.getString("box64_version", DefaultVersion.BOX64);
+        String dynaCache = envVars.has("BOX64_DYNACACHE") ? envVars.get("BOX64_DYNACACHE")+" (env)" : "1, limit 512 MiB";
+        lines.add("Box64: "+box64Version+", preset "+guestProgramLauncherComponent.getBox64Preset()+", DynaCache "+dynaCache);
+
+        final String[] prefixes = {"MESA_", "GALLIUM_", "VIRGL_", "ZINK_", "GLADIO_", "LIBGL_", "mesa_glthread", "vblank_mode", "TU_", "VK_", "DXVK_", "VKD3D_", "WINED3D", "BOX64_", "WINEDEBUG", "WINEESYNC"};
+        StringBuilder env = new StringBuilder();
+        for (String name : envVars) {
+            for (String prefix : prefixes) {
+                if (name.startsWith(prefix)) {
+                    env.append(env.length() > 0 ? " " : "").append(name).append('=').append(envVars.get(name));
+                    break;
+                }
+            }
+        }
+        lines.add("Env: "+env);
+
+        for (String line : lines) ProcessHelper.debugLog("[DL] "+line);
     }
 
     private void extractGraphicsDriverFiles() {

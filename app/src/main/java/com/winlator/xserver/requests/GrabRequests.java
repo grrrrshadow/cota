@@ -44,6 +44,9 @@ public abstract class GrabRequests {
         else if (window.getMapState() != Window.MapState.VIEWABLE) {
             status = Status.NOT_VIEWABLE;
         }
+        else if (client.xServer.grabManager.keepButtonGrab(window, client)) {
+            status = Status.SUCCESS; // winex11 SetCursorPos warp grab while a button is held
+        }
         else {
             status = Status.SUCCESS;
             client.xServer.grabManager.activatePointerGrab(window, ownerEvents, eventMask, client);
@@ -60,6 +63,6 @@ public abstract class GrabRequests {
 
     public static void ungrabPointer(XClient client, XInputStream inputStream, XOutputStream outputStream) {
         inputStream.skip(4);
-        client.xServer.grabManager.deactivatePointerGrab();
+        client.xServer.grabManager.ungrabPointer(client);
     }
 }

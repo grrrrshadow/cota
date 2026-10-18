@@ -9,6 +9,7 @@ import android.util.SparseLongArray;
 import androidx.annotation.Keep;
 
 import com.winlator.core.Callback;
+import com.winlator.core.ProcessHelper;
 import com.winlator.renderer.Texture;
 import com.winlator.xconnector.XInputStream;
 import com.winlator.xconnector.XOutputStream;
@@ -43,6 +44,14 @@ public class GLXExtension extends Extension {
 
     public GLXExtension(XServer xServer, byte majorOpcode) {
         super(xServer, majorOpcode);
+    }
+
+    // Kept apart from GLXExtension so it can be used without loading the native library
+    static abstract class ContextVersion {
+        // Gladio provides OpenGL 3.3, which also covers every 1.x and 2.x context
+        static boolean isSupported(int majorVersion, int minorVersion) {
+            return majorVersion >= 1 && (majorVersion < 3 || (majorVersion == 3 && minorVersion <= 3));
+        }
     }
 
     private static abstract class ClientOpcodes {
@@ -256,16 +265,20 @@ public class GLXExtension extends Extension {
 
         int glMajorVersion = 3;
         int glMinorVersion = 3;
+        boolean coreProfile = false;
         for (int i = 0; i < numAttribs; i++) {
             int name = inputStream.readInt();
             int value = inputStream.readInt();
 
             if (name == GLXEnums.GLX_CONTEXT_MAJOR_VERSION_ARB) glMajorVersion = value;
             else if (name == GLXEnums.GLX_CONTEXT_MINOR_VERSION_ARB) glMinorVersion = value;
+            else if (name == GLXEnums.GLX_CONTEXT_PROFILE_MASK_ARB) coreProfile = (value & GLXEnums.GLX_CONTEXT_CORE_PROFILE_BIT_ARB) != 0;
         }
 
-        boolean success = glMajorVersion <= 3 && glMinorVersion <= 3;
+        boolean success = ContextVersion.isSupported(glMajorVersion, glMinorVersion);
         if (success) createGLXContextForClient(client, contextId, shareContext);
+        // Games try several versions in turn; the log shows which ones Gladio refused and which one it gave.
+        ProcessHelper.debugLog("[DL] Gladio: OpenGL "+glMajorVersion+"."+glMinorVersion+(coreProfile ? " core" : "")+" context "+(success ? "created" : "refused (Gladio goes up to 3.3)"));
 
         try (XStreamLock lock = outputStream.lock()) {
             outputStream.writeByte(success ? RESPONSE_CODE_SUCCESS : RESPONSE_CODE_ERROR);

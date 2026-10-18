@@ -50,7 +50,7 @@ typedef struct GLVertexArrayObject {
         pointer = arrayBuffer->mappedData + (uint64_t)pointer; \
     } \
     GLVertexArrayObject_setAttribState(clientState, index, VERTEX_ATTRIB_LEGACY_ENABLED, false); \
-    clientState->vao->attribs[index].stride = stride > 0 ? stride : (size * sizeofGLType(type)); \
+    clientState->vao->attribs[index].stride = stride > 0 ? stride : sizeofVertexAttrib(size, type); \
     clientState->vao->attribs[index].pointer = pointer; \
     ArrayBuffer_rewind(&outputBuffer); \
     ArrayBuffer_put(&outputBuffer, size); \
@@ -71,7 +71,7 @@ typedef struct GLVertexArrayObject {
         clientState->vao->attribs[arrayIdx].size = size; \
         clientState->vao->attribs[arrayIdx].type = type; \
         clientState->vao->attribs[arrayIdx].normalized = type != GL_FLOAT && type != GL_HALF_FLOAT && hasBoundProgram; \
-        clientState->vao->attribs[arrayIdx].stride = stride > 0 || hasBoundProgram ? stride : (size * sizeofGLType(type)); \
+        clientState->vao->attribs[arrayIdx].stride = stride > 0 || hasBoundProgram ? stride : sizeofVertexAttrib(size, type); \
     } \
     while (0)
 

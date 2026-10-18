@@ -66,7 +66,10 @@ public class LogView extends View {
         boolean saveToFile = preferences.getBoolean("save_logs_to_file", false);
 
         File logFile = new File(logPath);
-        FileUtils.delete(logFile);
+        // Keep the last session's log, which may end with the lines just before a crash.
+        File previousLogFile = getPreviousLogFile(logFile);
+        FileUtils.delete(previousLogFile);
+        if (!logFile.renameTo(previousLogFile)) FileUtils.delete(logFile);
 
         if (saveToFile) {
             PrintStream printStream = null;
@@ -229,6 +232,13 @@ public class LogView extends View {
         File parent = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "WinlatorDL");
         if (!parent.isDirectory()) parent.mkdirs();
         return new File(parent, "logs.txt");
+    }
+
+    public static File getPreviousLogFile(File logFile) {
+        String name = logFile.getName();
+        int dot = name.lastIndexOf('.');
+        String previousName = dot > 0 ? name.substring(0, dot)+"-previous"+name.substring(dot) : name+"-previous";
+        return new File(logFile.getParentFile(), previousName);
     }
 
     public void exportToFile() {

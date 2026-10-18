@@ -68,6 +68,7 @@ static struct ReservedBuiltinWord reservedBuiltinWords[] = {
     {"gl_Color", NULL, FLAG_BUILTIN_COLOR, GL_VERTEX_SHADER},
     {"gl_SecondaryColor", NULL, FLAG_BUILTIN_SECONDARY_COLOR, GL_VERTEX_SHADER},
     {"gl_Vertex", NULL, FLAG_BUILTIN_VERTEX, GL_VERTEX_SHADER},
+    {"gl_NormalMatrix", "mat3(transpose(inverse(gd_ModelViewMatrix)))", FLAG_BUILTIN_MODEL_VIEW_MATRIX, GL_VERTEX_SHADER},
     {"gl_Normal", NULL, FLAG_BUILTIN_NORMAL, GL_VERTEX_SHADER},
     {"gl_MultiTexCoord", NULL, FLAG_BUILTIN_MULTITEXCOORD, GL_VERTEX_SHADER},
     {"gl_FogCoord", NULL, FLAG_BUILTIN_FOGCOORD, GL_VERTEX_SHADER},
@@ -75,6 +76,7 @@ static struct ReservedBuiltinWord reservedBuiltinWords[] = {
     {"gl_ProjectionMatrix", NULL, FLAG_BUILTIN_PROJECTION_MATRIX, GL_VERTEX_SHADER},
     {"gl_ModelViewProjectionMatrix", NULL, FLAG_BUILTIN_MODEL_VIEW_PROJECTION_MATRIX, GL_VERTEX_SHADER},
     {"gl_TextureMatrix", NULL, FLAG_BUILTIN_TEXTURE_MATRIX, GL_VERTEX_SHADER},
+    {"ftransform()", "(gd_ModelViewProjectionMatrix * gd_Vertex)", (FLAG_BUILTIN_MODEL_VIEW_PROJECTION_MATRIX | FLAG_BUILTIN_VERTEX), GL_VERTEX_SHADER},
     {"gl_FrontColor", NULL, FLAG_BUILTIN_FRONT_COLOR, GL_VERTEX_SHADER},
     {"gl_BackColor", NULL, FLAG_BUILTIN_BACK_COLOR, GL_VERTEX_SHADER},
     {"gl_FrontSecondaryColor", NULL, FLAG_BUILTIN_FRONT_SECONDARY_COLOR, GL_VERTEX_SHADER},
@@ -92,17 +94,29 @@ static struct ReservedWord reservedWords[] = {
     {"attribute", "in", GL_VERTEX_SHADER},
     {"varying", "out", GL_VERTEX_SHADER},
     {"varying", "in", GL_FRAGMENT_SHADER},
-    {"sampler1D", "sampler2D", GL_FRAGMENT_SHADER},
-    {"texture2D", "texture", GL_FRAGMENT_SHADER},
-    {"texture2DLod", "textureLod", GL_FRAGMENT_SHADER},
-    {"texture2DProj", "textureProj", GL_FRAGMENT_SHADER},
-    {"texture2DGradARB", "textureGrad", GL_FRAGMENT_SHADER},
-    {"texture2DLodOffset", "textureLodOffset", GL_FRAGMENT_SHADER},
-    {"texture3D", "texture", GL_FRAGMENT_SHADER},
-    {"textureCube", "texture", GL_FRAGMENT_SHADER},
+    {"sampler1D", "sampler2D", GL_NONE},
+    {"sampler1DShadow", "sampler2DShadow", GL_NONE},
+    {"texture1D", "texture", GL_NONE},
+    {"texture1DLod", "textureLod", GL_NONE},
+    {"texture2D", "texture", GL_NONE},
+    {"texture2DLod", "textureLod", GL_NONE},
+    {"texture2DLodARB", "textureLod", GL_NONE},
+    {"texture2DProj", "textureProj", GL_NONE},
+    {"texture2DProjLod", "textureProjLod", GL_NONE},
+    {"texture2DProjLodARB", "textureProjLod", GL_NONE},
+    {"texture2DGradARB", "textureGrad", GL_NONE},
+    {"texture2DLodOffset", "textureLodOffset", GL_NONE},
+    {"texture3D", "texture", GL_NONE},
+    {"texture3DLod", "textureLod", GL_NONE},
+    {"texture3DProj", "textureProj", GL_NONE},
+    {"textureCube", "texture", GL_NONE},
+    {"textureCubeLod", "textureLod", GL_NONE},
+    {"textureCubeLodARB", "textureLod", GL_NONE},
+    {"shadow2D", "gd_shadow2D", GL_NONE},
+    {"shadow2DProj", "gd_shadow2DProj", GL_NONE},
     {"filter", "gd_Filter", GL_FRAGMENT_SHADER},
     {"sample", "gd_Sample", GL_FRAGMENT_SHADER},
-    {"texture", "gd_Texture", GL_FRAGMENT_SHADER}
+    {"texture", "gd_Texture", GL_NONE}
 };
 
 static char* allowedExtensions[] = {"GL_ARB_shader_texture_lod"};
@@ -1084,6 +1098,13 @@ static char* implicitConvertFunctionParams(ShaderCode* shaderCode, char* line) {
     return line;
 }
 
+// gl_MultiTexCoord0..7 extend a builtin name with digits, but gl_VertexID is not gl_Vertex
+static bool matchesBuiltinWord(char* word, char* name, int len) {
+    if (!cstartswith(word, name)) return false;
+    for (int i = strlen(word); i < len; i++) if (!isdigit(name[i])) return false;
+    return true;
+}
+
 static char* replaceReservedWords(ShaderObject* shader, char* line) {
     ArrayList subwords = {0};
     int i = 0;
@@ -1102,11 +1123,15 @@ static char* replaceReservedWords(ShaderObject* shader, char* line) {
             char* name = line + nameStart;
             int len = i - nameStart;
             char* replace = NULL;
+            bool pastName = false;
 
-            if (len > 3 && name[0] == 'g' && name[1] == 'l' && name[2] == '_') {
+            if ((len > 3 && name[0] == 'g' && name[1] == 'l' && name[2] == '_') || (len == 10 && strncmp(name, "ftransform", 10) == 0)) {
                 for (j = 0; j < ARRAY_SIZE(reservedBuiltinWords); j++) {
-                    if ((reservedBuiltinWords[j].shaderType == GL_NONE || reservedBuiltinWords[j].shaderType == shader->type) && cstartswith(reservedBuiltinWords[j].name, name)) {
-                        if (len < strlen(reservedBuiltinWords[j].name)) i = nameStart + strlen(reservedBuiltinWords[j].name);
+                    if ((reservedBuiltinWords[j].shaderType == GL_NONE || reservedBuiltinWords[j].shaderType == shader->type) && matchesBuiltinWord(reservedBuiltinWords[j].name, name, len)) {
+                        if (len < strlen(reservedBuiltinWords[j].name)) {
+                            i = nameStart + strlen(reservedBuiltinWords[j].name);
+                            pastName = true;
+                        }
                         if (reservedBuiltinWords[j].replace) {
                             replace = strdup(reservedBuiltinWords[j].replace);
                         }
@@ -1138,6 +1163,9 @@ static char* replaceReservedWords(ShaderObject* shader, char* line) {
             }
 
             nameStart = -1;
+            // The word went on past the name (ftransform(), gl_FragData[0]), so carry on with the
+            // character after it, which may be the end of the line
+            if (pastName) continue;
         }
 
         if (chr == '\0') break;
@@ -1294,6 +1322,49 @@ static int countMainFunctions(ShaderObject* shader) {
     return count;
 }
 
+static bool isVariableAssigned(ShaderObject* shader, ShaderVariable* variable) {
+    int nameLength = strlen(variable->name);
+    for (int i = variable->lineStart; i < shader->code.lines.size; i++) {
+        char* line = shader->code.lines.elements[i];
+        char* start = line;
+        if (i == variable->lineStart && !(start = strchr(line, ';'))) continue;
+
+        for (char* match = strstr(start, variable->name); match; match = strstr(match + 1, variable->name)) {
+            if (match > line && (isalnum(match[-1]) || match[-1] == '_' || match[-1] == '.')) continue;
+            char* ptr = match + nameLength;
+            if (isalnum(*ptr) || *ptr == '_') continue;
+
+            char* prefix = match;
+            while (prefix > line && isspace(prefix[-1])) prefix--;
+            if (prefix - line >= 2 && (strncmp(prefix - 2, "++", 2) == 0 || strncmp(prefix - 2, "--", 2) == 0)) return true;
+
+            while (true) {
+                while (isspace(*ptr)) ptr++;
+                if (*ptr == '.') {
+                    ptr++;
+                    while (isalnum(*ptr) || *ptr == '_') ptr++;
+                }
+                else if (*ptr == '[') {
+                    int depth = 0;
+                    do {
+                        if (*ptr == '[') depth++;
+                        else if (*ptr == ']') depth--;
+                        ptr++;
+                    }
+                    while (*ptr && depth > 0);
+                }
+                else break;
+            }
+
+            if (ptr[0] == '=' && ptr[1] != '=') return true;
+            if ((ptr[0] == '+' || ptr[0] == '-') && ptr[1] == ptr[0]) return true;
+            if (ptr[0] && strchr("+-*/%&|^", ptr[0]) && ptr[1] == '=') return true;
+            if ((ptr[0] == '<' || ptr[0] == '>') && ptr[1] == ptr[0] && ptr[2] == '=') return true;
+        }
+    }
+    return false;
+}
+
 static void injectVariableDecorations(ShaderObject* shader) {
     for (int i = 0, location = 0; i < shader->code.variables.size; i++) {
         ShaderVariable* variable = shader->code.variables.entries[i].value;
@@ -1306,7 +1377,9 @@ static void injectVariableDecorations(ShaderObject* shader) {
             bool hasEquals = strchr(oldLine, '=') != NULL;
             UNMARK_START_COMMENT();
 
-            if (hasEquals) {
+            // Initialized globals become const so they can initialize other globals in GLSL ES,
+            // but not the ones the shader writes to later (wined3d's temp_reg for example)
+            if (hasEquals && (variable->typeQualifier != TYPE_QUALIFIER_NONE || !isVariableAssigned(shader, variable))) {
                 char* newLine;
                 if (variable->typeQualifier == TYPE_QUALIFIER_NONE) {
                     newLine = strjoin(0, 2, "const ", oldLine);
@@ -1345,12 +1418,17 @@ static void injectBuiltinVariables(ShaderProgram* program, ShaderObject* shader)
 
     int head = 0;
     insertCodeLine(shader, head++, strdup("#version 320 es"));
-    if (shader->type == GL_FRAGMENT_SHADER) {
-        insertCodeLine(shader, head++, strdup("precision highp float;"));
-        insertCodeLine(shader, head++, strdup("precision highp int;"));
-        insertCodeLine(shader, head++, strdup("precision highp sampler2DShadow;"));
-        insertCodeLine(shader, head++, strdup("precision highp sampler3D;"));
+    static const char* precisionTypes[] = {"float", "int", "sampler2D", "samplerCube", "sampler3D", "sampler2DShadow", "samplerCubeShadow",
+                                           "sampler2DArray", "sampler2DArrayShadow", "samplerBuffer", "sampler2DMS",
+                                           "isampler2D", "isampler3D", "isamplerCube", "isampler2DArray",
+                                           "usampler2D", "usampler3D", "usamplerCube", "usampler2DArray"};
+    for (int i = 0; i < ARRAY_SIZE(precisionTypes); i++) {
+        char text[64];
+        sprintf(text, "precision highp %s;", precisionTypes[i]);
+        insertCodeLine(shader, head++, strdup(text));
     }
+    insertCodeLine(shader, head++, strdup("vec4 gd_shadow2D(sampler2DShadow s, vec3 c) { return vec4(texture(s, c)); }"));
+    insertCodeLine(shader, head++, strdup("vec4 gd_shadow2DProj(sampler2DShadow s, vec4 c) { return vec4(textureProj(s, c)); }"));
 
     const char* prefix = shader->type == GL_VERTEX_SHADER ? "out" : "in";
 

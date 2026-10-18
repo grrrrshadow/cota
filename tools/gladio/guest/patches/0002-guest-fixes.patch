@@ -1,0 +1,209 @@
+Guest fixes:
+- flushMappedPersistentBuffers: indices are an offset when an element array buffer is bound,
+  reading them as a pointer crashed
+- buffer targets without a slot (GL_COPY_READ_BUFFER, ...) no longer index past vao->buffer
+- glPixelStorei keeps the unpack alignment/skips and the pack state
+- glReadPixels places the tightly packed rows from the host with the pack row length,
+  alignment and skips
+- glReadPixels into a pixel pack buffer waits for the host, the buffer is mapped and read
+  without asking the host, so the pixels could be read before the host had written them
+- glGetTexImage/glGetCompressedTexImage write into the pixel pack buffer when one is bound
+  (pixels is an offset then, writing to it crashed)
+- glVertexAttribPointer strides for packed vertex formats
+- glXCreateNewContext passes a NULL attribute list, which crashed glXCreateContextAttribsARB
+
+--- a/src/gl_buffer.c
++++ b/src/gl_buffer.c
+@@ -8,11 +8,14 @@
+ 
+ GLBuffer* GLBuffer_getBound(GLenum target) {
+     GLClientState* clientState = currentGLContext->clientState;
+-    return clientState->vao->buffer[indexOfGLTarget(target)];
++    uint8_t index = indexOfGLTarget(target);
++    return index < MAX_BUFFER_TARGETS ? clientState->vao->buffer[index] : NULL;
+ }
+ 
+ void GLBuffer_setBound(GLenum target, GLuint id) {
+     GLClientState* clientState = currentGLContext->clientState;
++    // Targets without a slot (copy read/write, indirect...) are only tracked by the host
++    if (indexOfGLTarget(target) >= MAX_BUFFER_TARGETS) return;
+     
+     GLBuffer* buffer = NULL;
+     if (id > 0) {
+@@ -120,6 +123,12 @@
+     if (currentGLContext->clientState->persistentBuffers.size == 0) return;
+     
+     if (indexType != GL_NONE) {
++        // With an element array buffer bound, indices is an offset into it
++        GLBuffer* elementArrayBuffer = GLBuffer_getBound(GL_ELEMENT_ARRAY_BUFFER);
++        if (elementArrayBuffer) {
++            if (!elementArrayBuffer->mappedData) return;
++            indices = elementArrayBuffer->mappedData + (uint64_t)indices;
++        }
+         GLuint range[2];
+         getRangeIndices(indices, count, indexType, basevertex, range);
+         first = range[0];
+--- a/src/gl_calls.c
++++ b/src/gl_calls.c
+@@ -3,6 +3,29 @@
+ 
+ #define MSG_DEBUG_UNIMPLEMENTED_GLCALL "gladio: unimplemented call %s"
+ 
++static void discardRingData(int size) {
++    void* data = malloc(size);
++    RingBuffer_read(currentGLContext->clientRing, data, size);
++    free(data);
++}
++
++// Reads image data the host sent through the ring. With a pixel pack buffer bound, pixels is
++// an offset into it, so the data goes to the buffer memory shared with the host.
++static void readPixelPackData(void* pixels, int imageSize) {
++    GLBuffer* pixelPackBuffer = GLBuffer_getBound(GL_PIXEL_PACK_BUFFER);
++    if (pixelPackBuffer) {
++        if (pixelPackBuffer->mappedData && (uint64_t)pixels + imageSize <= pixelPackBuffer->size) {
++            pixels = pixelPackBuffer->mappedData + (uint64_t)pixels;
++        }
++        else pixels = NULL;
++    }
++
++    if (pixels) {
++        RingBuffer_read(currentGLContext->clientRing, pixels, imageSize);
++    }
++    else discardRingData(imageSize);
++}
++
+ pthread_mutex_t gl_call_mutex = PTHREAD_MUTEX_INITIALIZER;
+ 
+ void glAccum(GLenum op, GLfloat value) {
+@@ -2396,7 +2419,7 @@
+     GL_SEND_CHECKED(REQUEST_CODE_GL_GET_COMPRESSED_TEX_IMAGE, outputBuffer.buffer, outputBuffer.size);
+     GL_RECV_CHECKED();
+     GLint imageSize = ArrayBuffer_getInt(&inputBuffer);
+-    if (imageSize > 0) RingBuffer_read(currentGLContext->clientRing, img, imageSize);
++    if (imageSize > 0) readPixelPackData(img, imageSize);
+     GL_CALL_UNLOCK();
+ }
+ 
+@@ -2994,7 +3017,7 @@
+     GL_SEND_CHECKED(REQUEST_CODE_GL_GET_TEX_IMAGE, outputBuffer.buffer, outputBuffer.size);
+     GL_RECV_CHECKED();
+     GLint imageSize = ArrayBuffer_getInt(&inputBuffer);
+-    if (imageSize > 0) RingBuffer_read(currentGLContext->clientRing, pixels, imageSize);
++    if (imageSize > 0) readPixelPackData(pixels, imageSize);
+     GL_CALL_UNLOCK();
+ }
+ 
+@@ -4495,6 +4518,30 @@
+     else if (pname == GL_UNPACK_IMAGE_HEIGHT) {
+         currentGLContext->clientState->pixelStore.unpackImageHeight = param;
+     }
++    else if (pname == GL_UNPACK_ALIGNMENT) {
++        currentGLContext->clientState->pixelStore.unpackAlignment = param;
++    }
++    else if (pname == GL_UNPACK_SKIP_PIXELS) {
++        currentGLContext->clientState->pixelStore.unpackSkipPixels = param;
++    }
++    else if (pname == GL_UNPACK_SKIP_ROWS) {
++        currentGLContext->clientState->pixelStore.unpackSkipRows = param;
++    }
++    else if (pname == GL_UNPACK_SKIP_IMAGES) {
++        currentGLContext->clientState->pixelStore.unpackSkipImages = param;
++    }
++    else if (pname == GL_PACK_ROW_LENGTH) {
++        currentGLContext->clientState->pixelStore.packRowLength = param;
++    }
++    else if (pname == GL_PACK_ALIGNMENT) {
++        currentGLContext->clientState->pixelStore.packAlignment = param;
++    }
++    else if (pname == GL_PACK_SKIP_PIXELS) {
++        currentGLContext->clientState->pixelStore.packSkipPixels = param;
++    }
++    else if (pname == GL_PACK_SKIP_ROWS) {
++        currentGLContext->clientState->pixelStore.packSkipRows = param;
++    }
+     ArrayBuffer_rewind(&outputBuffer);
+     ArrayBuffer_putInt(&outputBuffer, pname);
+     ArrayBuffer_putInt(&outputBuffer, param);
+@@ -4982,6 +5029,24 @@
+     GL_CALL_UNLOCK();
+ }
+ 
++// The host sends the rows tightly packed, they are placed with the pack state set by glPixelStorei
++static void readPackedPixels(GLenum format, GLenum type, GLsizei width, GLsizei height, void* pixels, int imageSize) {
++    GLClientState* clientState = currentGLContext->clientState;
++    RingBuffer* ring = currentGLContext->clientRing;
++    int rowSize = computeTexImageDataSize(format, type, width, 1, 1);
++    if (rowSize * height != imageSize) {
++        discardRingData(imageSize);
++        return;
++    }
++
++    int rowStride = computePixelRowStride(format, type, width, clientState->pixelStore.packRowLength, clientState->pixelStore.packAlignment);
++    char* dstData = (char*)pixels + clientState->pixelStore.packSkipRows * rowStride + clientState->pixelStore.packSkipPixels * (rowSize / width);
++    if (rowStride == rowSize) {
++        RingBuffer_read(ring, dstData, imageSize);
++    }
++    else for (int i = 0; i < height; i++) RingBuffer_read(ring, dstData + i * rowStride, rowSize);
++}
++
+ void glReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void* pixels) {
+     GL_CALL_LOCK();
+     ArrayBuffer_rewind(&outputBuffer);
+@@ -4994,14 +5059,16 @@
+     
+     GLBuffer* pixelPackBuffer = GLBuffer_getBound(GL_PIXEL_PACK_BUFFER);
+     if (pixelPackBuffer) {
++        // The buffer is mapped without asking the host, so wait until the host wrote the pixels
+         ArrayBuffer_putInt(&outputBuffer, (uint64_t)pixels);
+         GL_SEND_CHECKED(REQUEST_CODE_GL_READ_PIXELS, outputBuffer.buffer, outputBuffer.size);
++        GL_RECV_CHECKED();
+     }
+     else {
+         GL_SEND_CHECKED(REQUEST_CODE_GL_READ_PIXELS, outputBuffer.buffer, outputBuffer.size);
+         GL_RECV_CHECKED();
+         GLint imageSize = ArrayBuffer_getInt(&inputBuffer);
+-        if (imageSize > 0) RingBuffer_read(currentGLContext->clientRing, pixels, imageSize);
++        if (imageSize > 0) readPackedPixels(format, type, width, height, pixels, imageSize);
+     }
+     GL_CALL_UNLOCK();
+ }
+@@ -7257,7 +7324,7 @@
+     if (index < VERTEX_ATTRIB_COUNT) {
+         if (clientState->arbProgram[0]) index += GENERIC_VERTEX_ARRAY_INDEX;
+         if (!arrayBuffer || size == GL_BGRA) {
+-            clientState->vao->attribs[index].stride = stride > 0 ? stride : MIN(4, size) * sizeofGLType(type);
++            clientState->vao->attribs[index].stride = stride > 0 ? stride : sizeofVertexAttrib(size, type);
+             clientState->vao->attribs[index].pointer = arrayBuffer ? arrayBuffer->mappedData : pointer;
+             GLVertexArrayObject_setAttribState(clientState, index, VERTEX_ATTRIB_ENABLED, false);
+             if (!arrayBuffer) pointer = (void*)0;
+@@ -7266,7 +7333,7 @@
+     }
+     
+     if (arrayBuffer && arrayBuffer->mapped) {
+-        short drawStride = stride > 0 ? stride : (MIN(4, size) * sizeofGLType(type) + (uint64_t)pointer);
++        short drawStride = stride > 0 ? stride : (sizeofVertexAttrib(size, type) + (uint64_t)pointer);
+         arrayBuffer->drawStride = MAX(drawStride, arrayBuffer->drawStride);
+     }
+ 
+--- a/src/glx_calls.c
++++ b/src/glx_calls.c
+@@ -42,16 +42,17 @@
+     ArrayBuffer_put(&requestData, direct);
+     ArrayBuffer_putBytes(&requestData, NULL, 3);
+     
++    // glXCreateNewContext passes no attribute list
+     int i = 0;
+     int num_attribs = 0;
+-    while (attrib_list[i]) {
++    while (attrib_list && attrib_list[i]) {
+         num_attribs++;
+         i += 2;
+     }
+     ArrayBuffer_putInt(&requestData, num_attribs);
+     
+     i = 0;
+-    while (attrib_list[i]) {
++    while (attrib_list && attrib_list[i]) {
+         ArrayBuffer_putInt(&requestData, attrib_list[i+0]);
+         ArrayBuffer_putInt(&requestData, attrib_list[i+1]);
+         i += 2;

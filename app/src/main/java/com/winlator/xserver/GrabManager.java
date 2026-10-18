@@ -9,6 +9,7 @@ public class GrabManager implements WindowManager.OnWindowModificationListener {
     private boolean ownerEvents;
     private boolean releaseWithButtons;
     private EventListener eventListener;
+    private boolean buttonGrabKeptForWarp;
     private final XServer xServer;
 
     public GrabManager(XServer xServer) {
@@ -44,11 +45,30 @@ public class GrabManager implements WindowManager.OnWindowModificationListener {
     }
 
     public void deactivatePointerGrab() {
+        buttonGrabKeptForWarp = false;
         if (window != null) {
             xServer.inputDeviceManager.sendEnterLeaveNotify(window, xServer.inputDeviceManager.getPointWindow(), PointerWindowEvent.Mode.UNGRAB);
             window = null;
             eventListener = null;
         }
+    }
+
+    // winex11's SetCursorPos grabs its root window around every XWarpPointer (wine-10.10 mouse.c:1394-1408).
+    // Replacing a held button's grab with it would send that button's release to the root window, which
+    // winex11 drops in the game's process (event.c:455, mouse.c:550), so the button stayed down in Wine.
+    public boolean keepButtonGrab(Window grabWindow, XClient client) {
+        if (window == null || !releaseWithButtons || getClient() != client) return false;
+        if (xServer.pointer.getButtonMask().isEmpty() || !grabWindow.isAncestorOf(window)) return false;
+        buttonGrabKeptForWarp = true;
+        return true;
+    }
+
+    public void ungrabPointer(XClient client) {
+        if (buttonGrabKeptForWarp && getClient() == client) {
+            buttonGrabKeptForWarp = false;
+            return;
+        }
+        deactivatePointerGrab();
     }
 
     private void activatePointerGrab(Window window, EventListener eventListener, boolean ownerEvents, boolean releaseWithButtons) {

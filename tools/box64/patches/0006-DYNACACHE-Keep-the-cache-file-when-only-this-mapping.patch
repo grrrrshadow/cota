@@ -1,0 +1,50 @@
+From b2ab3d7c862dd1c6d0e8897b26eb4297dba47686 Mon Sep 17 00:00:00 2001
+From: Winlator DL <build@localhost>
+Date: Sat, 17 Oct 2026 22:27:59 +0000
+Subject: [PATCH 6/6] [DYNACACHE] Keep the cache file when only this mapping
+ differs
+
+A file mapped another way than as an image (LoadLibraryEx with
+LOAD_LIBRARY_AS_DATAFILE, which GetFileVersionInfo and resource readers use)
+has a different mapped size; #4484 then deleted the image's valid cache.
+Give that case its own error code and keep the file, and keep it on I/O or
+allocation errors too.
+---
+ src/tools/dynacache.c | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/src/tools/dynacache.c b/src/tools/dynacache.c
+index e14c32f..51e27d2 100644
+--- a/src/tools/dynacache.c
++++ b/src/tools/dynacache.c
+@@ -642,6 +642,7 @@ void SerializeMmaplist(mapping_t* mapping)
+ #define DCERR_BADNAME       12
+ #define DCERR_CPUEXT        13
+ #define DCERR_CHECKSUM      14
++#define DCERR_MAPLEN        15
+ 
+ #ifndef WIN32
+ int ReadDynaCache(const char* folder, const char* name, mapping_t* mapping, int verbose)
+@@ -774,7 +775,7 @@ int ReadDynaCache(const char* folder, const char* name, mapping_t* mapping, int
+     }
+     if (mapping && file_header->map_len != SizeFileMapped(mapping->start)) {
+         if (verbose) printf_log_prefix(0, LOG_NONE, "Incompatible mapped size\n");
+-        ret = DCERR_MAPCHG;
++        ret = DCERR_MAPLEN;
+         goto done;
+     }
+ 
+@@ -1008,7 +1009,9 @@ void MmapDynaCache(mapping_t* mapping)
+     if(!name) return;
+     dynarec_log(LOG_DEBUG, "Looking for DynaCache %s in %s\n", name, folder);
+     int ret = ReadDynaCache(folder, name, mapping, 0);
+-    if(ret && ret!=DCERR_NEXIST) {
++    // DCERR_MAPLEN: this process maps the file another way (e.g. LoadLibraryEx as a data file), the cache is still good.
++    // DCERR_FERROR: open, read or malloc failed, which says nothing about the file.
++    if(ret && ret!=DCERR_NEXIST && ret!=DCERR_MAPLEN && ret!=DCERR_FERROR) {
+         char filename[strlen(folder)+strlen(name)+1];
+         strcpy(filename, folder);
+         strcat(filename, name);
+-- 
+2.43.0
+

@@ -39,6 +39,14 @@ typedef struct GLClientState {
     struct {
         short unpackRowLength;
         short unpackImageHeight;
+        int unpackAlignment;
+        int unpackSkipPixels;
+        int unpackSkipRows;
+        int unpackSkipImages;
+        int packRowLength;
+        int packAlignment;
+        int packSkipPixels;
+        int packSkipRows;
     } pixelStore;
 #endif
 

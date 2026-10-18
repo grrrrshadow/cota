@@ -18,6 +18,9 @@ public class Texture {
     protected boolean needsUpdate = true;
     private boolean flipY = false;
     protected Drawable owner;
+    private int copySourceId = 0;
+    private short copyWidth = 0;
+    private short copyHeight = 0;
 
     public Texture(Drawable owner) {
         this.owner = owner;
@@ -155,6 +158,31 @@ public class Texture {
         GLES20.glCopyTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, 0, 0, width, height, 0);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
         GLES20.glFlush();
+        copySourceId = 0;
+    }
+
+    /* For a read buffer copied every frame: glCopyTexImage2D allocates new storage on each call,
+       so only the first copy from a source (sourceId, never 0) or after a size change uses it and
+       the others copy into that storage, which then has the source's format. */
+    public void copyFromReadBuffer(short width, short height, int sourceId) {
+        if (!isAllocated()) allocateTexture(width, height, null);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureId);
+        boolean reallocate = sourceId != copySourceId || width != copyWidth || height != copyHeight;
+        if (!reallocate) {
+            // the VirGL host never reads GL errors, so one it left in this context must not count as this copy's
+            for (int i = 0; i < 8 && GLES20.glGetError() != GLES20.GL_NO_ERROR; i++);
+            GLES20.glCopyTexSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
+            // a driver may refuse the copy into storage it made from a BGRA source: reallocate as before
+            reallocate = GLES20.glGetError() != GLES20.GL_NO_ERROR;
+        }
+        if (reallocate) {
+            GLES20.glCopyTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, 0, 0, width, height, 0);
+            copySourceId = sourceId;
+            copyWidth = width;
+            copyHeight = height;
+        }
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+        GLES20.glFlush();
     }
 
     public void destroy() {
@@ -163,5 +191,6 @@ public class Texture {
             GLES20.glDeleteTextures(textureIds.length, textureIds, 0);
             textureId = 0;
         }
+        copySourceId = 0;
     }
 }

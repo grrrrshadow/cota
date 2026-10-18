@@ -5691,7 +5691,7 @@ int vrend_renderer_transfer_iov(struct virgl_client *client, const struct vrend_
       return EINVAL;
 
    if (info->context0) {
-      vrend_renderer_force_ctx_0(client);
+      vrend_renderer_switch_ctx_0(client);
       ctx = NULL;
    }
 
@@ -6494,24 +6494,54 @@ static void free_fence_locked(struct vrend_fence *fence)
 
 static void vrend_renderer_check_queries(struct virgl_client *client);
 
-void vrend_renderer_check_fences(struct virgl_client *client)
+/* A blocking wait sleeps in slices and gives up after a while: a GPU that does not finish a
+ * frame in 2 s has hung, and the guest is better off carrying on than hanging with it. */
+#define FENCE_WAIT_SLICE_NS 100000000ull
+#define FENCE_WAIT_MAX_NS 2000000000ull
+
+static bool vrend_fence_wait(struct vrend_fence *fence, bool wait, uint64_t *waited_ns)
+{
+   GLenum glret;
+
+   do {
+      glret = glClientWaitSync(fence->syncobj, wait ? GL_SYNC_FLUSH_COMMANDS_BIT : 0,
+                               wait ? FENCE_WAIT_SLICE_NS : 0);
+      /* a fence that cannot be waited on never will be, count it as signaled like upstream */
+      if (glret != GL_TIMEOUT_EXPIRED)
+         return true;
+      if (wait)
+         *waited_ns += FENCE_WAIT_SLICE_NS;
+   } while (wait && *waited_ns < FENCE_WAIT_MAX_NS);
+
+   if (wait)
+      printf("vrend: fence %u still busy after %llu ms, not waiting any longer",
+             fence->fence_id, (unsigned long long)(*waited_ns / 1000000));
+   return false;
+}
+
+/* Retires the signaled fences, oldest first; with wait set, after blocking until all of them have
+ * signaled. One of the client's contexts must be current, sync objects are shared by all of them. */
+void vrend_renderer_check_fences(struct virgl_client *client, bool wait)
 {
    struct vrend_fence *fence, *stor;
    uint32_t latest_id = 0;
-   GLenum glret;
+   uint64_t waited_ns = 0;
 
-   vrend_renderer_force_ctx_0(client);
+   if (LIST_IS_EMPTY(&client->vrend_state->fence_list))
+      return;
+
+   /* The newest fence normally signals last: one sleep on it, then the others are done too */
+   if (wait) {
+      fence = LIST_ENTRY(struct vrend_fence, client->vrend_state->fence_list.prev, fences);
+      if (!vrend_fence_wait(fence, true, &waited_ns))
+         wait = false;
+   }
 
    LIST_FOR_EACH_ENTRY_SAFE(fence, stor, &client->vrend_state->fence_list, fences) {
-      glret = glClientWaitSync(fence->syncobj, 0, 0);
-      if (glret == GL_ALREADY_SIGNALED){
-         latest_id = fence->fence_id;
-         free_fence_locked(fence);
-      }
-      /* don't bother checking any subsequent ones */
-      else if (glret == GL_TIMEOUT_EXPIRED) {
+      if (!vrend_fence_wait(fence, wait, &waited_ns))
          break;
-      }
+      latest_id = fence->fence_id;
+      free_fence_locked(fence);
    }
 
    if (latest_id == 0)
@@ -7227,6 +7257,13 @@ void vrend_renderer_force_ctx_0(struct virgl_client *client)
    client->vrend_state->current_ctx = NULL;
    client->vrend_state->current_hw_ctx = NULL;
    vrend_hw_switch_context(ctx0, true);
+}
+
+/* vrend_renderer_force_ctx_0() without the eglMakeCurrent when context 0 is current already.
+ * Only valid while no other client has used this thread's EGL state since this one did. */
+void vrend_renderer_switch_ctx_0(struct virgl_client *client)
+{
+   vrend_hw_switch_context(vrend_lookup_renderer_ctx(client, 0), true);
 }
 
 void vrend_renderer_attach_res_ctx(struct virgl_client *client, int ctx_id, int resource_id)

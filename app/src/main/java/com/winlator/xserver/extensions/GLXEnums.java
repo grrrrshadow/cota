@@ -58,6 +58,8 @@ public abstract class GLXEnums {
     public static final byte GLX_TRANSPARENT_ALPHA_VALUE = 0x28;
     public static final short GLX_CONTEXT_MAJOR_VERSION_ARB = 0x2091;
     public static final short GLX_CONTEXT_MINOR_VERSION_ARB = 0x2092;
+    public static final int GLX_CONTEXT_PROFILE_MASK_ARB = 0x9126;
+    public static final int GLX_CONTEXT_CORE_PROFILE_BIT_ARB = 0x0001;
     public static final short GLX_CONTEXT_FLAGS_ARB = 0x2094;
     public static final int GLX_NONE = 0x8000;
     public static final int GLX_SLOW_CONFIG = 0x8001;

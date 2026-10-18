@@ -255,6 +255,9 @@ void virgl_server_destroy_renderer(struct virgl_client *client)
    if (!client->initialized)
       return;
 
+   /* the framebuffer belongs to context 0, and another client's context may be current */
+   vrend_renderer_force_ctx_0(client);
+
    if (client->renderer->framebuffer)
       glDeleteFramebuffers(1, &client->renderer->framebuffer);
 
@@ -501,6 +504,9 @@ int virgl_server_submit_cmd(struct virgl_client *client, uint32_t length)
 
    free(cbuf);
    virgl_server_renderer_create_fence(client);
+   /* retire what the GPU has finished meanwhile, so the fence list stays short and query
+    * results reach the guest without a busy wait */
+   vrend_renderer_check_fences(client, false);
    return 0;
 }
 
@@ -518,13 +524,10 @@ int virgl_server_resource_busy_wait(struct virgl_client *client, UNUSED uint32_t
 
    flags = recv_buf[1];
 
-   do {
-      busy = client->renderer->last_fence_id != client->renderer->fence_id;
-      if (!busy || !(flags & VCMD_BUSY_WAIT_FLAG_WAIT))
-         break;
-
-      vrend_renderer_check_fences(client);
-   } while (1);
+   /* Sleeps on the newest fence when asked to wait. This used to spin on zero-timeout
+    * glClientWaitSync calls, with an eglMakeCurrent on each turn, for the whole frame. */
+   vrend_renderer_check_fences(client, flags & VCMD_BUSY_WAIT_FLAG_WAIT);
+   busy = client->renderer->last_fence_id != client->renderer->fence_id;
 
    send_buf[0] = 1;
    send_buf[1] = VCMD_RESOURCE_BUSY_WAIT;
@@ -536,6 +539,9 @@ int virgl_server_resource_busy_wait(struct virgl_client *client, UNUSED uint32_t
 
    return 0;
 }
+
+/* Unique across clients: Java keeps a drawable's texture storage while the serial stays the same */
+static int framebuffer_serial;
 
 int virgl_server_flush_frontbuffer(struct virgl_client *client, UNUSED uint32_t length)
 {
@@ -566,10 +572,12 @@ int virgl_server_flush_frontbuffer(struct virgl_client *client, UNUSED uint32_t 
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
       client->renderer->framebuffer = framebuffer;
+      client->renderer->framebuffer_serial = ++framebuffer_serial;
       client->renderer->handle = handle;
    }
 
-   (*jni_info.env)->CallVoidMethod(jni_info.env, jni_info.obj, jni_info.flush_frontbuffer, drawable, client->renderer->framebuffer);
+   (*jni_info.env)->CallVoidMethod(jni_info.env, jni_info.obj, jni_info.flush_frontbuffer, drawable,
+                                   client->renderer->framebuffer, client->renderer->framebuffer_serial);
    return 0;
 }
 
