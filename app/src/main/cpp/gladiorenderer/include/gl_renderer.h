@@ -155,6 +155,15 @@ typedef struct GLRenderer {
     uint32_t frameCount;
 
     PixelReadCache* pixelReadCache;
+
+    // Pack state of the guest. It is applied when the pixels are written back for the guest,
+    // the GLES reads themselves always stay tightly packed.
+    struct {
+        int rowLength;
+        int alignment;
+        int skipPixels;
+        int skipRows;
+    } packState;
 } GLRenderer;
 
 extern void GLRenderer_initOnEGLContext(GLRenderer* renderer);

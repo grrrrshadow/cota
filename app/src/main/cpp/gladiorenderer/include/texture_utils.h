@@ -191,6 +191,25 @@ static inline int computeTexImageDataSize(uint32_t format, uint32_t type, uint32
     return width * height * depth * channels * bytesPerPixel;
 }
 
+// Distance in bytes between two rows of pixel data laid out with glPixelStorei row length/alignment
+static inline int computePixelRowStride(uint32_t format, uint32_t type, int width, int rowLength, int alignment) {
+    int rowSize = (rowLength > 0 ? rowLength : width) * computeTexImageDataSize(format, type, 1, 1, 1);
+    if (alignment <= 0) alignment = 4;
+    return (rowSize + alignment - 1) / alignment * alignment;
+}
+
+// Bytes from the start of client pixel data to the end of its last pixel, honouring the pixel store
+// state (imageHeight and skipImages only apply to 3D images, pass 0 for others)
+static inline int computePixelStoreDataSize(uint32_t format, uint32_t type, int width, int height, int depth, int rowLength, int imageHeight, int alignment, int skipPixels, int skipRows, int skipImages) {
+    int bytesPerPixel = computeTexImageDataSize(format, type, 1, 1, 1);
+    if (bytesPerPixel == 0 || width <= 0 || height <= 0 || depth <= 0) return 0;
+
+    int rowStride = computePixelRowStride(format, type, width, rowLength, alignment);
+    int imageStride = rowStride * (imageHeight > 0 ? imageHeight : height);
+    return skipImages * imageStride + skipRows * rowStride + skipPixels * bytesPerPixel +
+           (depth - 1) * imageStride + (height - 1) * rowStride + width * bytesPerPixel;
+}
+
 #ifdef __ANDROID__
 static inline bool isCompressedFormat(GLenum format) {
     switch (format) {
@@ -204,9 +223,12 @@ static inline bool isCompressedFormat(GLenum format) {
     }
 }
 
-static inline void convertTexImageFormat(uint32_t target, int* internalformat, uint32_t* format, uint32_t* type, void** imageData, int imageSize) {
+// Returns true when imageData was repacked to one byte per pixel, its rows are then tightly packed
+// whatever unpack alignment the guest uses
+static inline bool convertTexImageFormat(uint32_t target, int* internalformat, uint32_t* format, uint32_t* type, void** imageData, int imageSize) {
     int none = GL_NONE;
     if (!internalformat) internalformat = &none;
+    bool repacked = false;
 
 #if IS_DEBUG_ENABLED(DEBUG_MODE_TEXTURE_FORMAT)
     static SparseArray debugFormats = {0};
@@ -389,11 +411,13 @@ static inline void convertTexImageFormat(uint32_t target, int* internalformat, u
                 for (int i = 0; i < imageSize; i++) alphaPixels[i] = pixels[i*4];
                 memcpy(*imageData, alphaPixels, imageSize);
                 free(alphaPixels);
+                repacked = true;
             }
         }
     }
 
     if (*format == GL_BGRA) *internalformat = GL_BGRA;
+    return repacked;
 }
 #endif
 

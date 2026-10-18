@@ -226,9 +226,11 @@ static inline int getGLCallParamsCount(GLenum pname, bool* isColor) {
         GLBuffer* pixelUnpackBuffer = GLBuffer_getBound(GL_PIXEL_UNPACK_BUFFER); \
         int dataSize = compressedSize; \
         if (compressedSize == 0) { \
-            if (clientState->pixelStore.unpackRowLength > 0) width = clientState->pixelStore.unpackRowLength; \
-            if (clientState->pixelStore.unpackImageHeight > 0) height = clientState->pixelStore.unpackImageHeight; \
-            dataSize = imageData && !pixelUnpackBuffer ? computeTexImageDataSize(format, type, width, height, depth) : 0; \
+            bool is3D = requestCode == REQUEST_CODE_GL_TEX_IMAGE3D || requestCode == REQUEST_CODE_GL_TEX_SUB_IMAGE3D; \
+            dataSize = imageData && !pixelUnpackBuffer ? computePixelStoreDataSize(format, type, width, height, depth, \
+                clientState->pixelStore.unpackRowLength, is3D ? clientState->pixelStore.unpackImageHeight : 0, \
+                clientState->pixelStore.unpackAlignment, clientState->pixelStore.unpackSkipPixels, \
+                clientState->pixelStore.unpackSkipRows, is3D ? clientState->pixelStore.unpackSkipImages : 0) : 0; \
             ArrayBuffer_putInt(&outputBuffer, dataSize); \
         } \
         else ArrayBuffer_putInt(&outputBuffer, compressedSize); \

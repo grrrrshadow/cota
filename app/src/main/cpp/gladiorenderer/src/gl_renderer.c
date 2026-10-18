@@ -105,8 +105,10 @@ void GLRenderer_initOnEGLContext(GLRenderer* renderer) {
 
     glGenBuffers(ARRAY_SIZE(renderer->bufferIds), renderer->bufferIds);
 
+    // Unpack alignment follows the guest (GL default 4) since the guest sends its rows as they are
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    renderer->packState.alignment = 4;
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
     glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
@@ -910,6 +912,18 @@ int GLRenderer_getParamsv(GLRenderer* renderer, GLenum pname, GLenum type, void*
         case GL_ACTIVE_TEXTURE:
             if (params) *(GLenum*)params = GL_TEXTURE0 + renderer->clientState.activeTexture;
             break;
+        case GL_PACK_ROW_LENGTH:
+            if (params) *(GLint*)params = renderer->packState.rowLength;
+            break;
+        case GL_PACK_ALIGNMENT:
+            if (params) *(GLint*)params = renderer->packState.alignment;
+            break;
+        case GL_PACK_SKIP_PIXELS:
+            if (params) *(GLint*)params = renderer->packState.skipPixels;
+            break;
+        case GL_PACK_SKIP_ROWS:
+            if (params) *(GLint*)params = renderer->packState.skipRows;
+            break;
         default:
             if (pname == GL_POINT_SIZE_RANGE) pname = GL_ALIASED_POINT_SIZE_RANGE;
             if (pname >= GL_LIGHT0 && pname <= GL_LIGHT7) {
@@ -1255,6 +1269,8 @@ void GLRenderer_getTexParameter(GLRenderer* renderer, GLenum target, GLint level
     }
 }
 
+static void readPixels(GLRenderer* renderer, GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void* pixels, GLBuffer* pixelPackBuffer, bool useCache);
+
 void* GLRenderer_getTexImage(GLRenderer* renderer, GLenum target, GLint level, GLenum format, GLenum type, int* imageSize) {
     target = parseTexTarget(target);
     GLTexture* texture = GLTexture_getBound(target);
@@ -1267,8 +1283,13 @@ void* GLRenderer_getTexImage(GLRenderer* renderer, GLenum target, GLint level, G
 
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, target, texture->id, 0);
 
+    // The result goes back through the ring, so read into client memory even when a pack buffer
+    // is bound, and keep it out of the cache that belongs to the application's read framebuffer
     void* pixels = malloc(*imageSize);
-    GLRenderer_readPixels(renderer, 0, 0, texture->width, texture->height, format, type, pixels);
+    GLBuffer* pixelPackBuffer = GLBuffer_getBound(GL_PIXEL_PACK_BUFFER);
+    if (pixelPackBuffer) glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    readPixels(renderer, 0, 0, texture->width, texture->height, format, type, pixels, NULL, false);
+    if (pixelPackBuffer) glBindBuffer(GL_PIXEL_PACK_BUFFER, pixelPackBuffer->id);
 
     glBindFramebuffer(GL_FRAMEBUFFER, renderer->clientState.framebuffer[indexOfGLTarget(GL_FRAMEBUFFER)]);
     glDeleteFramebuffers(1, &framebuffer);
@@ -1325,6 +1346,7 @@ void GLRenderer_disableUnusedVertexAttributes(GLRenderer* renderer) {
 static void freePixelReadCache(GLRenderer* renderer) {
     if (renderer->pixelReadCache) {
         if (renderer->pixelReadCache->data) free(renderer->pixelReadCache->data);
+        free(renderer->pixelReadCache);
         renderer->pixelReadCache = NULL;
     }
 }
@@ -1334,11 +1356,36 @@ void GLRenderer_resetFrameCount(GLRenderer* renderer) {
     renderer->frameCount = 0;
 }
 
-void GLRenderer_readPixels(GLRenderer* renderer, GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void* pixels) {
+static void readPixels(GLRenderer* renderer, GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void* pixels, GLBuffer* pixelPackBuffer, bool useCache) {
     int srcDataSize = width * height * 4;
+    if (srcDataSize <= 0) return;
+
     GLuint framebuffer = renderer->clientState.framebuffer[indexOfGLTarget(GL_READ_FRAMEBUFFER)];
     PixelReadCache* pixelReadCache = renderer->pixelReadCache;
-    if (pixelReadCache && x == 0 && y == 0 &&
+
+    // With a pack buffer bound, pixels is an offset into it. The guest reads the buffer through
+    // its ashmem copy, so the rows are placed there with the guest pack state and the touched
+    // range is mirrored to the GLES buffer. Without one the guest gets tightly packed rows.
+    char* dstData = pixels;
+    char* packedData = NULL;
+    char* firstRow = NULL;
+    int packedDataSize = 0;
+    int rowSize = 0;
+    int rowStride = 0;
+    if (pixelPackBuffer) {
+        packedDataSize = computePixelStoreDataSize(format, type, width, height, 1, renderer->packState.rowLength, 0, renderer->packState.alignment, renderer->packState.skipPixels, renderer->packState.skipRows, 0);
+        if (!pixelPackBuffer->mappedData || packedDataSize <= 0 || (uintptr_t)pixels + packedDataSize > pixelPackBuffer->size) return;
+
+        packedData = (char*)pixelPackBuffer->mappedData + (uintptr_t)pixels;
+        rowSize = computeTexImageDataSize(format, type, width, 1, 1);
+        rowStride = computePixelRowStride(format, type, width, renderer->packState.rowLength, renderer->packState.alignment);
+        firstRow = packedData + renderer->packState.skipRows * rowStride + renderer->packState.skipPixels * (rowSize / width);
+        dstData = rowStride == rowSize ? firstRow : malloc(rowSize * height);
+    }
+
+    // The cache holds raw RGBA bytes, so only requests that want exactly that may use it
+    bool cacheable = useCache && !pixelPackBuffer && format == GL_RGBA && (type == GL_UNSIGNED_BYTE || type == GL_UNSIGNED_INT_8_8_8_8_REV);
+    if (cacheable && pixelReadCache && x == 0 && y == 0 &&
                           pixelReadCache->dataSize == srcDataSize &&
                           pixelReadCache->framebuffer == framebuffer &&
                          (renderer->frameCount-pixelReadCache->frameIndex) <= PIXEL_READ_CACHE_SKIP_FRAMES) {
@@ -1346,14 +1393,15 @@ void GLRenderer_readPixels(GLRenderer* renderer, GLint x, GLint y, GLsizei width
         return;
     }
 
-    GLBuffer* pixelPackBuffer = GLBuffer_getBound(GL_PIXEL_PACK_BUFFER);
-    bool convert = format != GL_RGBA && format != GL_BGRA;
-    if (pixelPackBuffer && convert) glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    // Read straight into the destination only when it has 4 bytes per pixel like the GLES read
+    bool fourBytesPerPixel = type == GL_BYTE || type == GL_UNSIGNED_BYTE || type == GL_UNSIGNED_INT_8_8_8_8 || type == GL_UNSIGNED_INT_8_8_8_8_REV;
+    bool convert = !fourBytesPerPixel || (format != GL_RGBA && format != GL_BGRA);
+    if (pixelPackBuffer) glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
-    char* srcData = convert ? malloc(srcDataSize) : pixels;
+    char* srcData = convert ? malloc(srcDataSize) : dstData;
     glReadPixels(x, y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, srcData);
 
-    if (x == 0 && y == 0 && width <= 256 && height <= 256 && !convert) {
+    if (cacheable && x == 0 && y == 0 && width <= 256 && height <= 256) {
         if (!pixelReadCache) renderer->pixelReadCache = pixelReadCache = calloc(1, sizeof(PixelReadCache));
         if (srcDataSize != pixelReadCache->dataSize) {
             MEMFREE(pixelReadCache->data);
@@ -1364,30 +1412,15 @@ void GLRenderer_readPixels(GLRenderer* renderer, GLint x, GLint y, GLsizei width
         pixelReadCache->frameIndex = renderer->frameCount;
         memcpy(pixelReadCache->data, srcData, srcDataSize);
     }
-    else freePixelReadCache(renderer);
+    else if (useCache) freePixelReadCache(renderer);
 
-    if (pixelPackBuffer) {
-        if (!convert) {
-            srcData = glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, pixelPackBuffer->size, GL_MAP_READ_BIT);
-            memcpy(pixelPackBuffer->mappedData, srcData, pixelPackBuffer->size);
-            glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
-        }
-        else glBindBuffer(GL_PIXEL_PACK_BUFFER, pixelPackBuffer->id);
-    }
-
-    if (type == GL_BYTE ||
-        type == GL_UNSIGNED_BYTE ||
-        type == GL_UNSIGNED_INT_8_8_8_8 ||
-        type == GL_UNSIGNED_INT_8_8_8_8_REV ||
-        type == GL_UNSIGNED_SHORT_5_6_5) {
-        char* dstData = pixelPackBuffer ? pixelPackBuffer->mappedData : pixels;
-
+    if (type == GL_UNSIGNED_SHORT_5_6_5 ? format == GL_RGB : fourBytesPerPixel) {
         switch (format) {
             case GL_RED:
             case GL_GREEN:
             case GL_BLUE:
             case GL_LUMINANCE:
-                for (int i = 0, j = format - GL_RED, k = 0; i < srcDataSize; i += 4, k++) dstData[k] = srcData[i+j];
+                for (int i = 0, j = format == GL_LUMINANCE ? 0 : format - GL_RED, k = 0; i < srcDataSize; i += 4, k++) dstData[k] = srcData[i+j];
                 break;
             case GL_RGB:
                 if (type == GL_UNSIGNED_SHORT_5_6_5) {
@@ -1416,10 +1449,12 @@ void GLRenderer_readPixels(GLRenderer* renderer, GLint x, GLint y, GLsizei width
                 }
                 break;
             case GL_BGRA:
+                // srcData and dstData are the same buffer here, so swap through a temporary
                 for (int i = 0; i < srcDataSize; i += 4) {
+                    char r = srcData[i+0];
                     dstData[i+0] = srcData[i+2];
                     dstData[i+1] = srcData[i+1];
-                    dstData[i+2] = srcData[i+0];
+                    dstData[i+2] = r;
                     dstData[i+3] = srcData[i+3];
                 }
                 break;
@@ -1433,4 +1468,17 @@ void GLRenderer_readPixels(GLRenderer* renderer, GLint x, GLint y, GLsizei width
     else println("gladio:readPixels: unimplemented type %x", type);
 
     if (convert) free(srcData);
+
+    if (pixelPackBuffer) {
+        if (rowStride != rowSize) {
+            for (int i = 0; i < height; i++) memcpy(firstRow + i * rowStride, dstData + i * rowSize, rowSize);
+            free(dstData);
+        }
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, pixelPackBuffer->id);
+        glBufferSubData(GL_PIXEL_PACK_BUFFER, (uintptr_t)pixels, packedDataSize, packedData);
+    }
+}
+
+void GLRenderer_readPixels(GLRenderer* renderer, GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void* pixels) {
+    readPixels(renderer, x, y, width, height, format, type, pixels, GLBuffer_getBound(GL_PIXEL_PACK_BUFFER), true);
 }

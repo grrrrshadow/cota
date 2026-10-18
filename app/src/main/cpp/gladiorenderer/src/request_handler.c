@@ -2148,15 +2148,25 @@ void gd_handle_glPixelStorei(GLContext* context) {
     GLenum pname = ArrayBuffer_getInt(&context->inputBuffer);
     GLint param = ArrayBuffer_getInt(&context->inputBuffer);
 
-    if (pname == GL_PACK_ROW_LENGTH ||
-        pname == GL_PACK_SKIP_PIXELS ||
-        pname == GL_PACK_SKIP_ROWS ||
-        pname == GL_UNPACK_ROW_LENGTH ||
+    if (pname == GL_UNPACK_ROW_LENGTH ||
         pname == GL_UNPACK_IMAGE_HEIGHT ||
+        pname == GL_UNPACK_ALIGNMENT ||
         pname == GL_UNPACK_SKIP_PIXELS ||
         pname == GL_UNPACK_SKIP_ROWS ||
         pname == GL_UNPACK_SKIP_IMAGES) {
         glPixelStorei(pname, param);
+    }
+    else if (pname == GL_PACK_ROW_LENGTH) {
+        currentRenderer->packState.rowLength = param;
+    }
+    else if (pname == GL_PACK_ALIGNMENT) {
+        currentRenderer->packState.alignment = param;
+    }
+    else if (pname == GL_PACK_SKIP_PIXELS) {
+        currentRenderer->packState.skipPixels = param;
+    }
+    else if (pname == GL_PACK_SKIP_ROWS) {
+        currentRenderer->packState.skipRows = param;
     }
 }
 
@@ -2345,7 +2355,9 @@ void gd_handle_glReadPixels(GLContext* context) {
     GLBuffer* pixelPackBuffer = GLBuffer_getBound(GL_PIXEL_PACK_BUFFER);
     if (pixelPackBuffer) {
         uint64_t pointer = ArrayBuffer_getInt(&context->inputBuffer);
-        GLRenderer_readPixels(currentRenderer, x, y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, (void*)pointer);
+        GLRenderer_readPixels(currentRenderer, x, y, width, height, format, type, (void*)pointer);
+        // The guest maps pack buffers without asking the host, so it waits until the pixels are there
+        gl_send(context->clientRing, REQUEST_CODE_GL_READ_PIXELS, NULL, 0);
     }
     else {
         int imageSize = computeTexImageDataSize(format, type, width, height, 1);
@@ -2631,8 +2643,13 @@ void gd_handle_glTexImage2D(GLContext* context) {
     else {
         void* imageData = NULL;
         RING_READ_BEGIN(context->serverRing, imageData, imageSize);
-        convertTexImageFormat(target, &internalformat, &format, &type, &imageData, imageSize);
+        GLint unpackAlignment = 0;
+        if (convertTexImageFormat(target, &internalformat, &format, &type, &imageData, imageSize)) {
+            glGetIntegerv(GL_UNPACK_ALIGNMENT, &unpackAlignment);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        }
         glTexImage2D(target, level, internalformat, width, height, border, format, type, imageData);
+        if (unpackAlignment > 0) glPixelStorei(GL_UNPACK_ALIGNMENT, unpackAlignment);
         RING_READ_END(context->serverRing);
     }
 
@@ -2679,8 +2696,13 @@ void gd_handle_glTexImage3D(GLContext* context) {
     else {
         void* imageData = NULL;
         RING_READ_BEGIN(context->serverRing, imageData, imageSize);
-        convertTexImageFormat(target, &internalformat, &format, &type, &imageData, imageSize);
+        GLint unpackAlignment = 0;
+        if (convertTexImageFormat(target, &internalformat, &format, &type, &imageData, imageSize)) {
+            glGetIntegerv(GL_UNPACK_ALIGNMENT, &unpackAlignment);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        }
         glTexImage3D(target, level, internalformat, width, height, depth, border, format, type, imageData);
+        if (unpackAlignment > 0) glPixelStorei(GL_UNPACK_ALIGNMENT, unpackAlignment);
         RING_READ_END(context->serverRing);
     }
 }
