@@ -2148,15 +2148,25 @@ void gd_handle_glPixelStorei(GLContext* context) {
     GLenum pname = ArrayBuffer_getInt(&context->inputBuffer);
     GLint param = ArrayBuffer_getInt(&context->inputBuffer);
 
-    if (pname == GL_PACK_ROW_LENGTH ||
-        pname == GL_PACK_SKIP_PIXELS ||
-        pname == GL_PACK_SKIP_ROWS ||
-        pname == GL_UNPACK_ROW_LENGTH ||
+    if (pname == GL_UNPACK_ROW_LENGTH ||
         pname == GL_UNPACK_IMAGE_HEIGHT ||
+        pname == GL_UNPACK_ALIGNMENT ||
         pname == GL_UNPACK_SKIP_PIXELS ||
         pname == GL_UNPACK_SKIP_ROWS ||
         pname == GL_UNPACK_SKIP_IMAGES) {
         glPixelStorei(pname, param);
+    }
+    else if (pname == GL_PACK_ROW_LENGTH) {
+        currentRenderer->packState.rowLength = param;
+    }
+    else if (pname == GL_PACK_ALIGNMENT) {
+        currentRenderer->packState.alignment = param;
+    }
+    else if (pname == GL_PACK_SKIP_PIXELS) {
+        currentRenderer->packState.skipPixels = param;
+    }
+    else if (pname == GL_PACK_SKIP_ROWS) {
+        currentRenderer->packState.skipRows = param;
     }
 }
 
@@ -2345,7 +2355,9 @@ void gd_handle_glReadPixels(GLContext* context) {
     GLBuffer* pixelPackBuffer = GLBuffer_getBound(GL_PIXEL_PACK_BUFFER);
     if (pixelPackBuffer) {
         uint64_t pointer = ArrayBuffer_getInt(&context->inputBuffer);
-        GLRenderer_readPixels(currentRenderer, x, y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, (void*)pointer);
+        GLRenderer_readPixels(currentRenderer, x, y, width, height, format, type, (void*)pointer);
+        // The guest maps pack buffers without asking the host, so it waits until the pixels are there
+        gl_send(context->clientRing, REQUEST_CODE_GL_READ_PIXELS, NULL, 0);
     }
     else {
         int imageSize = computeTexImageDataSize(format, type, width, height, 1);
@@ -2631,8 +2643,17 @@ void gd_handle_glTexImage2D(GLContext* context) {
     else {
         void* imageData = NULL;
         RING_READ_BEGIN(context->serverRing, imageData, imageSize);
-        convertTexImageFormat(target, &internalformat, &format, &type, &imageData, imageSize);
+        GLenum sentType = type;
+        GLint unpackAlignment = 0;
+        if (convertTexImageFormat(target, &internalformat, &format, &type, &imageData, imageSize)) {
+            glGetIntegerv(GL_UNPACK_ALIGNMENT, &unpackAlignment);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        }
+        // Unsized depth is uploaded as GL_UNSIGNED_INT, which would misread (or read past) the
+        // 8/16-bit or float values the guest sent, so the texture stays uninitialized as before
+        else if (format == GL_DEPTH_COMPONENT && type != sentType) imageData = NULL;
         glTexImage2D(target, level, internalformat, width, height, border, format, type, imageData);
+        if (unpackAlignment > 0) glPixelStorei(GL_UNPACK_ALIGNMENT, unpackAlignment);
         RING_READ_END(context->serverRing);
     }
 
@@ -2679,8 +2700,15 @@ void gd_handle_glTexImage3D(GLContext* context) {
     else {
         void* imageData = NULL;
         RING_READ_BEGIN(context->serverRing, imageData, imageSize);
-        convertTexImageFormat(target, &internalformat, &format, &type, &imageData, imageSize);
+        GLenum sentType = type;
+        GLint unpackAlignment = 0;
+        if (convertTexImageFormat(target, &internalformat, &format, &type, &imageData, imageSize)) {
+            glGetIntegerv(GL_UNPACK_ALIGNMENT, &unpackAlignment);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        }
+        else if (format == GL_DEPTH_COMPONENT && type != sentType) imageData = NULL;
         glTexImage3D(target, level, internalformat, width, height, depth, border, format, type, imageData);
+        if (unpackAlignment > 0) glPixelStorei(GL_UNPACK_ALIGNMENT, unpackAlignment);
         RING_READ_END(context->serverRing);
     }
 }
@@ -3119,15 +3147,21 @@ void gd_handle_glVertexAttrib3f(GLContext* context) {
 }
 
 void gd_handle_glVertexAttrib4Nbv(GLContext* context) {
-    println(MSG_DEBUG_UNIMPLEMENTED_FUNC, "glVertexAttrib4Nbv");
+    GLuint index = ArrayBuffer_getInt(&context->inputBuffer);
+    GLbyte* v = ArrayBuffer_getBytes(&context->inputBuffer, 4);
+    glVertexAttrib4f(index, MAX(v[0] / 127.0f, -1.0f), MAX(v[1] / 127.0f, -1.0f), MAX(v[2] / 127.0f, -1.0f), MAX(v[3] / 127.0f, -1.0f));
 }
 
 void gd_handle_glVertexAttrib4Niv(GLContext* context) {
-    println(MSG_DEBUG_UNIMPLEMENTED_FUNC, "glVertexAttrib4Niv");
+    GLuint index = ArrayBuffer_getInt(&context->inputBuffer);
+    GLint* v = ArrayBuffer_getBytes(&context->inputBuffer, 4 * sizeof(GLint));
+    glVertexAttrib4f(index, MAX(v[0] / 2147483647.0, -1.0), MAX(v[1] / 2147483647.0, -1.0), MAX(v[2] / 2147483647.0, -1.0), MAX(v[3] / 2147483647.0, -1.0));
 }
 
 void gd_handle_glVertexAttrib4Nsv(GLContext* context) {
-    println(MSG_DEBUG_UNIMPLEMENTED_FUNC, "glVertexAttrib4Nsv");
+    GLuint index = ArrayBuffer_getInt(&context->inputBuffer);
+    GLshort* v = ArrayBuffer_getBytes(&context->inputBuffer, 4 * sizeof(GLshort));
+    glVertexAttrib4f(index, MAX(v[0] / 32767.0f, -1.0f), MAX(v[1] / 32767.0f, -1.0f), MAX(v[2] / 32767.0f, -1.0f), MAX(v[3] / 32767.0f, -1.0f));
 }
 
 void gd_handle_glVertexAttrib4Nub(GLContext* context) {
@@ -3137,19 +3171,25 @@ void gd_handle_glVertexAttrib4Nub(GLContext* context) {
     GLubyte z = ArrayBuffer_get(&context->inputBuffer);
     GLubyte w = ArrayBuffer_get(&context->inputBuffer);
 
-    println(MSG_DEBUG_UNIMPLEMENTED_FUNC, "glVertexAttrib4Nub");
+    glVertexAttrib4f(index, x / 255.0f, y / 255.0f, z / 255.0f, w / 255.0f);
 }
 
 void gd_handle_glVertexAttrib4Nubv(GLContext* context) {
-    println(MSG_DEBUG_UNIMPLEMENTED_FUNC, "glVertexAttrib4Nubv");
+    GLuint index = ArrayBuffer_getInt(&context->inputBuffer);
+    GLubyte* v = ArrayBuffer_getBytes(&context->inputBuffer, 4);
+    glVertexAttrib4f(index, v[0] / 255.0f, v[1] / 255.0f, v[2] / 255.0f, v[3] / 255.0f);
 }
 
 void gd_handle_glVertexAttrib4Nuiv(GLContext* context) {
-    println(MSG_DEBUG_UNIMPLEMENTED_FUNC, "glVertexAttrib4Nuiv");
+    GLuint index = ArrayBuffer_getInt(&context->inputBuffer);
+    GLuint* v = ArrayBuffer_getBytes(&context->inputBuffer, 4 * sizeof(GLuint));
+    glVertexAttrib4f(index, v[0] / 4294967295.0, v[1] / 4294967295.0, v[2] / 4294967295.0, v[3] / 4294967295.0);
 }
 
 void gd_handle_glVertexAttrib4Nusv(GLContext* context) {
-    println(MSG_DEBUG_UNIMPLEMENTED_FUNC, "glVertexAttrib4Nusv");
+    GLuint index = ArrayBuffer_getInt(&context->inputBuffer);
+    GLushort* v = ArrayBuffer_getBytes(&context->inputBuffer, 4 * sizeof(GLushort));
+    glVertexAttrib4f(index, v[0] / 65535.0f, v[1] / 65535.0f, v[2] / 65535.0f, v[3] / 65535.0f);
 }
 
 void gd_handle_glVertexAttrib4f(GLContext* context) {

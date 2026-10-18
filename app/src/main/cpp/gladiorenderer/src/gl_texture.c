@@ -22,15 +22,18 @@ GLuint GLTexture_create() {
 
 GLTexture* GLTexture_getBound(GLenum target) {
     uint8_t activeTexture = currentRenderer->clientState.activeTexture;
-    return currentRenderer->clientState.texture[activeTexture][indexOfGLTarget(target)];
+    uint8_t index = indexOfGLTarget(target);
+    return index < MAX_TEXTURE_TARGETS ? currentRenderer->clientState.texture[activeTexture][index] : NULL;
 }
 
 void GLTexture_bind(GLenum target, GLuint id) {
     bool isTextureRect = target == GL_TEXTURE_RECTANGLE;
     target = parseTexTarget(target);
     uint8_t activeTexture = currentRenderer->clientState.activeTexture;
+    // Targets without a slot (buffer and multisample textures) are only bound on the GLES side
+    uint8_t index = indexOfGLTarget(target);
     if (id == 0) {
-        currentRenderer->clientState.texture[activeTexture][indexOfGLTarget(target)] = NULL;
+        if (index < MAX_TEXTURE_TARGETS) currentRenderer->clientState.texture[activeTexture][index] = NULL;
         glBindTexture(target, 0);
         return;
     }
@@ -40,7 +43,7 @@ void GLTexture_bind(GLenum target, GLuint id) {
     texture->type = target;
     texture->normalizeCoords = isTextureRect;
     GLX_CONTEXT_UNLOCK();
-    currentRenderer->clientState.texture[activeTexture][indexOfGLTarget(target)] = texture;
+    if (index < MAX_TEXTURE_TARGETS) currentRenderer->clientState.texture[activeTexture][index] = texture;
     glBindTexture(target, texture->id);
 }
 
@@ -78,7 +81,8 @@ GLuint GLTexture_getBindingId(GLenum target) {
     GLX_CONTEXT_LOCK();
     GLuint bindingId = 0;
     GLClientState* clientState = &currentRenderer->clientState;
-    GLTexture* texture = clientState->texture[clientState->activeTexture][indexOfGLTarget(target)];
+    uint8_t index = indexOfGLTarget(target);
+    GLTexture* texture = index < MAX_TEXTURE_TARGETS ? clientState->texture[clientState->activeTexture][index] : NULL;
     if (texture) {
         for (int i = 0; i < clientState->textures->size; i++) {
             if (clientState->textures->entries[i].value == texture) {
