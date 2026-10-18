@@ -105,6 +105,13 @@ public abstract class ProcessHelper {
         return pid;
     }
 
+    // Adds a line of our own to the log next to the guest's output.
+    public static void debugLog(String line) {
+        synchronized (debugCallbacks) {
+            for (Callback<String> callback : debugCallbacks) callback.call(line);
+        }
+    }
+
     // Pinning only speeds things up, so a missing native method must not stop the launch.
     private static int setThreadAffinityMask(int mask) {
         try {
