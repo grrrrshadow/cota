@@ -5,9 +5,11 @@
 # libxxf86vm-dev libxrandr-dev libdrm-dev libzstd-dev libexpat1-dev zlib1g-dev mesa-vulkan-drivers xvfb mesa-utils
 # x11-apps imagemagick.
 # Usage: WORK=dir tools/mesa-zink/smoke-x86.sh   (WORK = the one build.sh used: reuses its patched source and venv)
+#   VERSION=x.y.z builds another Mesa than build.sh's (its patched source mesa-x.y.z/ with .patched must be in WORK).
 set -euo pipefail
 WORK=$(realpath "${WORK:?set WORK to the build.sh work dir}")
-SRC=$WORK/mesa-26.2.5
+VERSION=${VERSION:-$(sed -n 's/^VERSION=//p' "$(dirname "$0")/build.sh")}
+SRC=$WORK/mesa-$VERSION
 [ -f "$SRC/.patched" ] || { echo "run build.sh with the same WORK first"; exit 1; }
 export PATH=$WORK/venv/bin:$PATH
 

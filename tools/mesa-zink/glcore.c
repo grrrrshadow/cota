@@ -17,6 +17,12 @@
 
 typedef GLXContext (*CreateContextAttribs)(Display *, GLXFBConfig, GLXContext, Bool, const int *);
 
+// A refused context version is an X error (BadMatch); report it instead of letting Xlib exit.
+static int on_xerror(Display *dpy, XErrorEvent *e) {
+    printf("X error %d (request %d.%d)\n", e->error_code, e->request_code, e->minor_code);
+    return 0;
+}
+
 static void on_segv(int sig, siginfo_t *si, void *uc) {
     void *frames[64];
     int n = backtrace(frames, 64);
@@ -40,6 +46,7 @@ int main(int argc, char **argv) {
     int major = version[0] - '0', minor = version[2] - '0';
     Display *dpy = XOpenDisplay(NULL);
     if (!dpy) { printf("no display\n"); return 1; }
+    XSetErrorHandler(on_xerror);
     int fbattribs[] = {GLX_RENDER_TYPE, GLX_RGBA_BIT, GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT, GLX_DOUBLEBUFFER, True,
                        GLX_RED_SIZE, 8, GLX_GREEN_SIZE, 8, GLX_BLUE_SIZE, 8, None};
     int count = 0;
@@ -57,6 +64,7 @@ int main(int argc, char **argv) {
     int ctxattribs[] = {GLX_CONTEXT_MAJOR_VERSION_ARB, major, GLX_CONTEXT_MINOR_VERSION_ARB, minor,
                         GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB, None};
     GLXContext ctx = create(dpy, configs[0], NULL, True, ctxattribs);
+    XSync(dpy, False);
     if (!ctx || !glXMakeCurrent(dpy, win, ctx)) { printf("core %s context failed\n", version); return 1; }
     printf("GL_VERSION: %s\nGL_RENDERER: %s\n", glGetString(GL_VERSION), glGetString(GL_RENDERER));
 
