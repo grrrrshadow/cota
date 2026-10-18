@@ -262,4 +262,117 @@ public class StuckRightButtonGrabTest {
         pressRight(); // a press while Pointer has R down is not a transition (Pointer.java:84)
         assertEquals(2, buttonEvents(game, BUTTON_PRESS, g0).size());
     }
+
+    /** reply status of a GrabPointer(owner_events False) from client c on window w */
+    int grabPointer(XClient c, Window w) throws Exception {
+        RecOut out = (RecOut)c.getOutputStream();
+        int before = out.messages().size();
+        ByteBuffer g = body(20);
+        g.putInt(w.id);
+        g.putShort((short)(Event.POINTER_MOTION | Event.BUTTON_PRESS | Event.BUTTON_RELEASE));
+        request(c, (byte)0, g.array(), GRAB_LOCKS, GrabRequests::grabPointer);
+        List<byte[]> m = out.messages();
+        for (int i = before; i < m.size(); i++) if (m.get(i)[0] == 1) return m.get(i)[1];
+        return -1;
+    }
+
+    void ungrabPointer(XClient c) throws Exception {
+        request(c, (byte)0, new byte[4], WM_INPUT, GrabRequests::ungrabPointer);
+    }
+
+    /** event windows of the events of one type for one button the client got from index 'from' on */
+    static List<Integer> buttonEvents(XClient c, int type, int button, int from) {
+        List<Integer> r = new ArrayList<>();
+        List<byte[]> m = ((RecOut)c.getOutputStream()).messages();
+        for (int i = from; i < m.size(); i++) if ((m.get(i)[0] & 0x7f) == type && m.get(i)[1] == button) r.add(eventWindow(m.get(i)));
+        return r;
+    }
+
+    @Test
+    public void secondButtonPressedAndBothReleasedDuringWarps() throws Exception {
+        int g0 = size(game);
+        pressRight();
+        xServer.injectPointerMoveDelta(-1, 0);
+        assertEquals(0, wineSetCursorPos(488, 353, () -> xServer.injectPointerButtonPress(Pointer.Button.BUTTON_LEFT)));
+        xServer.injectPointerMoveDelta(-1, 0);
+        assertEquals(0, wineSetCursorPos(488, 353, () -> xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT)));
+        assertSame("R is still held", whole, xServer.grabManager.getWindow());
+        xServer.injectPointerMoveDelta(-1, 0);
+        assertEquals(0, wineSetCursorPos(488, 353, this::releaseRight));
+        assertNull(xServer.grabManager.getWindow());
+
+        assertEquals(java.util.Collections.singletonList(whole.id), buttonEvents(game, BUTTON_PRESS, 1, g0));
+        assertEquals(java.util.Collections.singletonList(whole.id), buttonEvents(game, BUTTON_RELEASE, 1, g0));
+        assertEquals(java.util.Collections.singletonList(whole.id), buttonEvents(game, BUTTON_RELEASE, 3, g0));
+        assertTrue(buttonEvents(explorer, BUTTON_PRESS, 1, 0).isEmpty());
+
+        // nothing is left kept: a warp with no button held grabs and ungrabs the root as before
+        final Window[] during = new Window[1];
+        assertEquals(0, wineSetCursorPos(600, 300, () -> during[0] = xServer.grabManager.getWindow()));
+        assertSame(desktop, during[0]);
+        assertNull(xServer.grabManager.getWindow());
+    }
+
+    @Test
+    public void captureGrabOnTheGameWindowItselfOutlivesTheButton() throws Exception {
+        // X11DRV_SetCapture (window.c:3039) grabs whole_window for menus and move/size while the button is down;
+        // that is not an ancestor of the button's grab window, so it stays an active grab as before
+        xServer.injectPointerButtonPress(Pointer.Button.BUTTON_LEFT);
+        assertEquals(0, grabPointer(game, whole));
+        assertFalse(xServer.grabManager.isReleaseWithButtons());
+        xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT);
+        assertSame(whole, xServer.grabManager.getWindow());
+        ungrabPointer(game);
+        assertNull(xServer.grabManager.getWindow());
+    }
+
+    @Test
+    public void otherClientsStillGetAlreadyGrabbedWhileTheButtonIsHeld() throws Exception {
+        pressRight();
+        assertEquals(1 /* AlreadyGrabbed */, grabPointer(explorer, desktop));
+        final int[] status = new int[1];
+        assertEquals(0, wineSetCursorPos(488, 353, () -> {
+            try { status[0] = grabPointer(explorer, desktop); } catch (Exception e) { throw new RuntimeException(e); }
+        }));
+        assertEquals(1, status[0]);
+        assertSame(whole, xServer.grabManager.getWindow());
+        assertTrue(xServer.grabManager.isReleaseWithButtons());
+    }
+
+    @Test
+    public void windowUnmappedDuringTheWarpLeavesNoKeptGrabBehind() throws Exception {
+        Window popup;
+        try (XLock lock = xServer.lockAll()) {
+            popup = xServer.windowManager.createWindow(0x400003, desktop, (short)10, (short)10, (short)50, (short)50, WindowAttributes.WindowClass.INPUT_ONLY, null, (byte)0, game);
+            xServer.windowManager.mapWindow(popup);
+        }
+        pressRight();
+        assertEquals(0, wineSetCursorPos(488, 353, () -> {
+            try (XLock lock = xServer.lockAll()) { xServer.windowManager.unmapWindow(popup); }
+        }));
+        // any unmap ends the pointer grab in Winlator (GrabManager.onUnmapWindow), the kept one included
+        assertNull(xServer.grabManager.getWindow());
+        int g0 = size(game);
+        releaseRight();
+        assertEquals(java.util.Collections.singletonList(whole.id), buttonEvents(game, BUTTON_RELEASE, g0));
+
+        // the next drag gets a fresh button grab, kept through its warps and ended by its release
+        pressRight();
+        assertEquals(0, wineSetCursorPos(488, 353, null));
+        assertSame(whole, xServer.grabManager.getWindow());
+        releaseRight();
+        assertNull(xServer.grabManager.getWindow());
+    }
+
+    @Test
+    public void releaseInsideTheWarpDoesNotSwallowALaterUngrab() throws Exception {
+        pressRight();
+        assertEquals(0, wineSetCursorPos(488, 353, this::releaseRight));
+        assertNull(xServer.grabManager.getWindow());
+        // a later active grab (a menu's SetCapture) is still ended by its own UngrabPointer
+        assertEquals(0, grabPointer(game, whole));
+        assertSame(whole, xServer.grabManager.getWindow());
+        ungrabPointer(game);
+        assertNull(xServer.grabManager.getWindow());
+    }
 }
