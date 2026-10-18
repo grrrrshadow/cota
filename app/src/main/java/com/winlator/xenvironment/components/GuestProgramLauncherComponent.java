@@ -136,6 +136,19 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             GeneralComponents.extractFile(GeneralComponents.Type.BOX64, context, box64Version, DefaultVersion.BOX64);
             preferences.edit().putString("current_box64_version", box64Version).apply();
         }
+        clearDynaCachesOfOtherBox64(preferences, environment.getRootFS().getRootDir(), box64Version);
+    }
+
+    // Box64 accepts a DynaCache file whose dynarec and settings hashes match, and stock 0.4.4 and 0.4.4-dl share them,
+    // so files written by a build without the cache fixes would still be loaded: every container starts again when the
+    // build changes. current_box64_version cannot tell, every app update resets it.
+    static void clearDynaCachesOfOtherBox64(SharedPreferences preferences, File rootDir, String box64Version) {
+        if (box64Version.equals(preferences.getString("dynacache_box64_version", ""))) return;
+        File[] homeDirs = (new File(rootDir, "home")).listFiles((dir, name) -> name.startsWith(RootFS.USER+"-"));
+        if (homeDirs != null) {
+            for (File homeDir : homeDirs) FileUtils.delete(new File(homeDir, ".cache/box64"));
+        }
+        preferences.edit().putString("dynacache_box64_version", box64Version).apply();
     }
 
     private void copyDefaultBox64RCFile() {
