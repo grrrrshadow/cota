@@ -70,3 +70,49 @@ Podrobně v **`MYS-REPORT.md`** (ve stejném repu). Krátce:
   verzi OpenGL si hra řekla a jestli ji dostala.
 - Předchozí spuštění zůstane jako `session-previous.txt`, pád Winlatoru v `crash.txt`.
 - Pro hru: když hra něco zapíše na stderr (třeba `-d driver=2`), objeví se to tam taky.
+
+---
+
+## 5. Výkon a 3D na telefonu (25. 10. 2026, z vašich deníků)
+
+Podklady: `snimky.log`, `3d_karta.log`, `3d_domy.log` a náš `session.txt` ze tří běhů
+(build 34 Winlatoru DL, Motorola Edge 60 Fusion, Mali-G615, Box64 0.4.4-dl).
+
+**1. Hrdlo je kreslení špinavých bloků na procesoru, ne grafická karta.**
+- Když se nic nehýbe: 100–120 fps, `bloky` ~0 ms.
+- Když jezdí vozidla: `bloky` průměrně 200–480 ms na snímek, odtud 2–4 fps.
+- `obraz` (předání karte) je pořád jen 7–20 ms, `buffer` pár ms.
+- Výměna OpenGL ovladače (VirGL, Zink, Gladio) na tohle vliv nemá. Pomohlo by jen méně
+  překreslování (méně bloků označených jako špinavé), nebo kreslit sprity kartou.
+
+**2. Velká jádra pomohla.** Hra teď jede jen na A78 (CPU 4–7).
+- Pohled shora: střed se zvedl z 4,8 na 40 fps, úseků pod 10 fps je 26 ze 116 místo 64 ze 119.
+- Těžký snímek (`bloky` ≥ 50 ms) trvá ~199 ms místo ~284 ms, tedy asi o 30 % rychleji.
+
+**3. Pohled z očí má pevnou cenu ~207 ms na snímek v `bloky`**, ať je ve scéně cokoliv.
+Karta (`karta`) přitom dělá 35–57 ms, `priprava` 5 ms. Vypadá to na práci procesoru
+kolem plátna očí, ne na kreslení kartou. Stojí za to změřit, co přesně v tom bloku je.
+
+**4. Při každém startu jeden obří tik.** Ve všech třech během asi 30–60 s po spuštění:
+tik hry 27–33 s, `zamek` 15–24 s, `okna` 11–13 s (23:27:02, 23:47:43 a 22:33:58).
+Ve stejné chvíli začíná 3D: `3d_karta.log` ukazuje, že obrázek 1 trval 171 ms a obrázek 5
+(atlas země 4096×4096) 1527 ms. Na VirGL i Zinku znamená každé `glReadPixels` cestu
+z karty přes procesor a socket (VirGL) nebo přes Vulkan (Zink), takže je drahé. Další
+obrázky už trvaly 6–15 ms. Jestli ten tik dělá 3D příprava (index 483 objektů, atlasy),
+pomohlo by ji pustit mimo herní vlákno nebo po kouscích.
+
+**5. 3D na VirGL 4.3 nastartovalo bez chyb.** `start v poradku: virgl, OpenGL 4.3 (Core
+Profile) Mesa 23.1.9, textures up to 16384`, všechny shadery přeložené. Jak to vypadalo
+na obrazovce, hráč ještě napíše.
+
+**6. Zink 25.1.9 s ručně nastavenou verzí 4.5: modrá ulice a rozbité textury.** Pohled
+z očí: domy dobré, ulice modrá, auta s divnými texturami. Pohled shora: divné domy. Je to
+pořád stejný styl poruchy. Zink při tom hlásí `Incorrect rendering will happen because the
+Vulkan device doesn't support the 'VK_EXT_depth_clip_enable' feature` (Mali ho nemá).
+Rozbor u nás běží, podezřelé jsou vaše R8 indexové textury s paletou přes Zink/Vortek, nebo
+chybějící depth clip. Výsledek doplním sem. Do té doby doporučujeme hrát na **VirGL 4.3**.
+
+**7. Pro informaci, neškodné:** hlášky `failed to remap gl…` (Mesa ve VirGL), `Window …
+has no colormap`, `libEGL.so.1` (Wine zkouší EGL, pak jede přes GLX) a
+`GL_INVALID_ENUM in glGetString(GL_EXTENSIONS)`. Ta poslední není od vás: `opengl.cpp:176-190`
+čte rozšíření správně přes `glGetStringi`.
