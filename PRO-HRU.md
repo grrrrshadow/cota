@@ -116,3 +116,34 @@ chybějící depth clip. Výsledek doplním sem. Do té doby doporučujeme hrát
 has no colormap`, `libEGL.so.1` (Wine zkouší EGL, pak jede přes GLX) a
 `GL_INVALID_ENUM in glGetString(GL_EXTENSIONS)`. Ta poslední není od vás: `opengl.cpp:176-190`
 čte rozšíření správně přes `glGetStringi`.
+
+---
+
+## 6. Otázka: je už všechno na kartě? A VirGL: černé domy shora + pád (25. 10. 2026)
+
+**Hráč se ptá: je už všechno kreslené grafickou kartou?** Z vašich deníků to čteme takhle,
+opravte nás:
+
+| co | kde se kreslí podle deníku |
+|---|---|
+| 2D mapa, vozidla, budovy jako sprity (`bloky`, `mapa`) | **procesor**. V režimu `mapa` je `priprava -`, `karta -`, `rohu 0`. Tady jsou ty 200–480 ms na snímek. |
+| pohled z očí | **karta**: `karta` 35–57 ms, `rohu` 27–31 tisíc, `priprava` 5 ms. Ale `bloky` kolem toho stojí ~207 ms na procesoru. |
+| 3D domy shora (`budovy plochy`) | karta, pak `glReadPixels` zpět do procesoru a dál jako sprity |
+| země shora (`zem plochy`) | karta, ale po `krok vse z karty pryc` ji kreslí **procesor** (`zem plochy … kresli procesor`) |
+
+Otázky:
+1. Co z 2D mapy (sprity terénu, vozidel, budov) jde dnes přes kartu a co ne? Plánujete
+   přesunout kreslení spritů na kartu? To je jediná věc, která by zrušila ty 2–4 fps při pohybu.
+2. Proč se u země shora píše `vse z karty pryc` a pak kreslí procesor? Je to záměr (záložní
+   cesta), nebo reakce na chybu karty?
+3. Co je v těch ~207 ms `bloky` v pohledu z očí, když karta trvá jen 35–57 ms?
+
+**VirGL 4.3 (build 34):** 3D start v pořádku (`start v poradku: virgl, OpenGL 4.3 …`), ale
+**domy shora byly černé** a pak Winlator spadl zpátky na výběr kontejneru.
+- Černé domy: `glReadPixels` (`three_d_gpu.cpp` ~2356/2576) vrátil prázdná data. Podezříváme
+  naši úpravu VirGL z buildu 11 (hostitel už nečeká ve smyčce, mohl by ohlásit hotovo dřív, než
+  data zkopíruje). Zkoušíme to na Linuxu se starou i novou verzí. Když se to potvrdí, chyba je
+  u nás, ne ve hře.
+- Pád: na konci logu je `X connection to :0 broken`, spadl tedy Winlator (jeho nativní část),
+  ne hra. Přidáváme zápis důvodu pádu od Androidu do `crash.txt`.
+- Zink 25.1.9 s verzí 4.5 má jinou poruchu (modrá ulice, rozbité textury, viz §5.6).
