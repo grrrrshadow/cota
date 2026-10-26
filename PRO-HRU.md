@@ -147,3 +147,47 @@ Otázky:
 - Pád: na konci logu je `X connection to :0 broken`, spadl tedy Winlator (jeho nativní část),
   ne hra. Přidáváme zápis důvodu pádu od Androidu do `crash.txt`.
 - Zink 25.1.9 s verzí 4.5 má jinou poruchu (modrá ulice, rozbité textury, viz §5.6).
+
+---
+
+## 7. Proč 2–4 fps: nekešovaná paměť karty (26. 10. 2026, ověřeno nezávislou kontrolou)
+
+**Hlavní příčina (potvrzená):** hráčovy pomalé běhy měly OpenGL **4.6 a 4.5** (Zink). Od 4.4
+hra kreslí obrazovku rovnou do trvale namapovaného bufferu karty (`opengl.cpp:611`, `:990`,
+`:1030`, cíl kreslení `:1281-1297`). Zink chce paměť `HOST_VISIBLE|HOST_CACHED`, ale Vortek
+(naše vrstva Vulkanu) ji na telefonu dává **nekešovanou** (`/dev/dma_heap/system-uncached`).
+Každé čtení pixelu procesorem pak trvá ~240–260 ns. Kód, který čte každý pixel:
+`RealizeAnimation` v `cab_view_gui.cpp:401` (plátno očí), `RealizeNorthRect` `viewport.cpp:3631-3640`,
+míchání obrázků `:3675-3678`, noc `DarkenRect` `40bpp_anim.cpp:98-128`, posun `40bpp_anim.cpp:536`.
+Proto pohled z očí stojí pořád ~207 ms bez ohledu na počet volání: cena roste s plochou.
+
+**Vaše oprava `2c5fe7b5` („Obrazovka hry ve vlastní paměti, kartě jen zápis“) to řeší, ale
+hráč ji nemá.** Hraje build **#300 = `090bc46b`** (formát deníku `frame_diary.cpp:121` bez
+sloupců `otocena`/`obrazky`). **Prosím pusťte „Build OpenTTD (Windows)“ na `75c5747d` nebo
+novějším.** Navíc: v `cab_view_gui.cpp:400-401` místo `RealizeAnimation` bajty animace plátna
+jen zapsat (smazat), protože obrázek nebo díra stejně přepíše každý pixel.
+
+**Další ověřené věci pro hru:**
+- **Start: obří tik 22–33 s.** Po skenu NewGRF běží `OnNewGRFsScanned` (`openttd.cpp:422-490`)
+  bez přerušení (zámek 15,8 s, tik 26,6 s). Pak první snímek titulky 11,2 s, protože
+  `ThreeDGpuAvailable()` (`three_d_gpu.cpp:3922`) čeká na start 3D vlákna. U nové hry se všechny
+  NewGRF načtou před prvním krokem průběhu (tik 22,3 s). Pomohlo by dát krok průběhu
+  (yield) po každém GRF a na kartu nečekat (do té doby kreslit procesorem).
+- **Dlouhé snímky brzdí celou hru:** tiky klesnou z 37/s na 4–13/s. Po snímku delším než
+  ~100 ms nechat herní vlákno dohnat zmeškané tiky (`video_driver.cpp:122-125`).
+- **Build pro telefon:** `-DCMAKE_BUILD_TYPE=Release` (nebo `/Ob2`) a `-DOPTION_USE_ASSERTS=OFF`.
+  Hra teď běží jen na 4 velkých jádrech, takže velikost poolů vláken brát z počtu bitů v
+  `GetProcessAffinityMask`, ne z `hardware_concurrency` (to hlásí 8).
+- **Vyloučeno, netřeba řešit:** volba blitteru a SIMD pod Box64, předání obrazu (`obraz`
+  7–20 ms), `SetCursorPos` (hra kurzor ořezává oknem, takže Wine grab nedělá), varování Zinku,
+  preset Box64.
+- **Neprošlo kontrolou (není to příčina v těchto bězích):** že příchod obrázků překresluje celou
+  obrazovku a že se 3D příprava opakuje pro každý špinavý obdélník. Cena v těchto bězích
+  rostla s plochou a obsahem scény, ne s počtem obdélníků.
+
+**Co by se hodilo do deníku:** sloupec plochy (pixely) překreslené za snímek a časy fází
+startu (sken, AI/GS, intro, start 3D) s hodinami.
+
+**U nás (Winlator DL):** do `session.txt` přidáme, jakou paměť Vortek zvolil. Hráč může
+zkusit Vortek „Resource Memory Type“ = Opaque FD (může dát kešovanou paměť, nebo selhat).
+Než přijde váš nový build, doporučujeme hráči OpenGL **pod 4.4** (Zink Auto = 3.3).
