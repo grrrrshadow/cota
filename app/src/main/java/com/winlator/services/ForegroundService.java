@@ -24,6 +24,7 @@ import androidx.preference.PreferenceManager;
 import com.winlator.MainActivity;
 import com.winlator.R;
 import com.winlator.XServerDisplayActivity;
+import com.winlator.core.ExitReasons;
 
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -324,6 +325,7 @@ public class ForegroundService extends Service {
 
         sessionActive.set(false);
         isSessionInBackground = false;
+        ExitReasons.setState(this, "task removed by the user");
 
         new Thread(() -> new Handler(Looper.getMainLooper()).post(() -> {
             serviceRunning.set(false);

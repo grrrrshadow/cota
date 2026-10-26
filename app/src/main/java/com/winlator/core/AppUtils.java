@@ -83,6 +83,7 @@ public abstract class AppUtils {
         }
 
         context.startActivity(mainIntent);
+        ExitReasons.setState(context, ExitReport.STATE_RESTART);
         Runtime.getRuntime().exit(0);
     }
 
