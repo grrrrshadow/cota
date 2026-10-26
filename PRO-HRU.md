@@ -68,7 +68,7 @@ Podrobně v **`MYS-REPORT.md`** (ve stejném repu). Krátce:
   GPU, jádra, ovladače a jejich nastavení, proměnné k OpenGL), pak chyby OpenGL z Mesy
   (VirGL, Zink) s názvem funkce, chyby Wine a hlášky při pádu. Na Gladiu řádek, o jakou
   verzi OpenGL si hra řekla a jestli ji dostala.
-- Předchozí spuštění zůstane jako `session-previous.txt`, pád Winlatoru v `crash.txt`.
+- Předchozí spuštění zůstane jako `session-previous.txt`. V `crash.txt` jsou pády Winlatoru: Java hned, a od buildu 13 i pády nativní části (místo pádu a backtrace), zabití kvůli paměti a zamrznutí, zapsané při dalším spuštění podle Androidu.
 - Pro hru: když hra něco zapíše na stderr (třeba `-d driver=2`), objeví se to tam taky.
 
 ---
@@ -191,3 +191,24 @@ startu (sken, AI/GS, intro, start 3D) s hodinami.
 **U nás (Winlator DL):** do `session.txt` přidáme, jakou paměť Vortek zvolil. Hráč může
 zkusit Vortek „Resource Memory Type“ = Opaque FD (může dát kešovanou paměť, nebo selhat).
 Než přijde váš nový build, doporučujeme hráči OpenGL **pod 4.4** (Zink Auto = 3.3).
+
+---
+
+## 8. VirGL: proč černé domy a „vše z karty pryč“ (26. 10. 2026, build 13)
+
+- **Černé domy shora:** chyba byla v naší hostitelské části VirGL. Fragment shadery se dvěma
+  výstupy (vaše mapové budovy, mesh, budovy z očí) psala bez `layout(location = N)`. GLSL ES
+  to při více výstupech zakazuje a přísný kompilátor Mali takový program odmítne, takže
+  se nekreslilo nic. Opraveno v buildu 13. Na Mesa (Linux) se to projevilo prohozenými výstupy.
+- **„vse z karty pryc“ (GL_OUT_OF_MEMORY):** Brunův guest ovladač VirGL sdílí jeden socket
+  mezi všemi GL vlákny bez zámku a čísluje prostředky nezamčeným počítadlem. Vaše hra kreslí
+  ze dvou vláken (video + 3D kontext), takže se požadavky pomíchají. Výsledkem jsou duplicitní
+  čísla, `GL_OUT_OF_MEMORY` při vytváření textur, zaseknutí a čtení zpět dřív, než data dorazí.
+  Oprava guestu je hotová (`tools/virgl-harness/guest-patches/0001-…`), nový guest stavíme.
+  Do té doby to hra dobře zachytí a kreslí procesorem.
+- **Pád do výběru kontejneru:** fuzzování našeho hostitele našlo tři pády z dat od guestu
+  (front buffer neznámého prostředku, double free u nepodporovaného formátu textury, compute
+  bez programu) a přetečení délky příkazového bufferu. Opraveno v buildu 13. Jestli to byl
+  hráčův pád, ukáže `crash.txt` z buildu 13.
+- Test vaší 3D cesty (sdílený 3.3 core kontext na vlastním vlákně, FBO RGBA8 + R8/R32F + depth,
+  atlas 4096², `glReadPixels` BGRA a RED) je v `tools/virgl-harness/readbacktest.c` v repu cota.
