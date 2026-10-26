@@ -257,14 +257,22 @@ public class Tombstone {
         return frame;
     }
 
+    // debuggerd writes the system buffer, then main (up to 500 lines each). Each buffer keeps its own last lines,
+    // so a long main buffer does not push out the newest system lines before toText merges them by time.
     private void parseLogBuffer(Reader reader) throws IOException {
-        while (reader.hasMore()) {
-            long key = reader.varint();
-            if (key == ((2 << 3) | 2)) {
-                logs.add(parseLogMessage(reader.message()));
-                if (logs.size() > 4 * MAX_LOG_LINES) logs.subList(0, logs.size() - MAX_LOG_LINES).clear();
+        ArrayList<LogMessage> bufferLogs = new ArrayList<>();
+        try {
+            while (reader.hasMore()) {
+                long key = reader.varint();
+                if (key == ((2 << 3) | 2)) {
+                    bufferLogs.add(parseLogMessage(reader.message()));
+                    if (bufferLogs.size() > 4 * MAX_LOG_LINES) bufferLogs.subList(0, bufferLogs.size() - MAX_LOG_LINES).clear();
+                }
+                else reader.skip((int)(key & 7));
             }
-            else reader.skip((int)(key & 7));
+        }
+        finally {
+            logs.addAll(bufferLogs.subList(Math.max(0, bufferLogs.size() - MAX_LOG_LINES), bufferLogs.size()));
         }
     }
 
@@ -287,10 +295,10 @@ public class Tombstone {
         return message;
     }
 
+    // Null when the data ended before the thread that got the signal: the map comes in no fixed order, and
+    // putting another thread's backtrace in its place would blame the wrong code.
     public Thread getCrashingThread() {
-        Thread thread = threads.get(tid);
-        if (thread == null && !threads.isEmpty()) thread = threads.values().iterator().next();
-        return thread;
+        return threads.get(tid);
     }
 
     private boolean is64Bit() {
@@ -371,6 +379,7 @@ public class Tombstone {
             sb.append("backtrace:\n");
             appendBacktrace(sb, crashingThread);
         }
+        else if (!threads.isEmpty()) sb.append("backtrace: thread ").append(tid).append(" is not in the data\n");
 
         if (!logs.isEmpty()) {
             // One list per log buffer (main, system...); "MM-DD HH:MM:SS.mmm" sorts as text.
@@ -385,8 +394,9 @@ public class Tombstone {
             }
         }
 
-        if (threads.size() > 1) {
-            sb.append("other threads (").append(threads.size() - 1).append("):\n");
+        int otherThreadCount = threads.size() - (crashingThread != null ? 1 : 0);
+        if (otherThreadCount > 0) {
+            sb.append("other threads (").append(otherThreadCount).append("):\n");
             for (Thread thread : threads.values()) {
                 if (thread == crashingThread) continue;
                 sb.append("  ").append(thread.id).append(" '").append(thread.name).append("'");

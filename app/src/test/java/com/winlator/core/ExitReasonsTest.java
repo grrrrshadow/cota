@@ -123,7 +123,8 @@ public class ExitReasonsTest {
         int end = new String(tombstone, StandardCharsets.ISO_8859_1).indexOf("VirGLServer");
         ExitReasons.Trace truncated = ExitReasons.decodeTrace(tombstone, end, true, ApplicationExitInfo.REASON_CRASH_NATIVE);
         assertEquals("tombstone, "+end+" bytes (only the first 4 MB read)", truncated.header);
-        assertTrue(truncated.summary, truncated.summary.startsWith("signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0000000000000010, thread 12345 'main'"));
+        // the main thread came through, the crashing VirGLServer thread did not: no thread is blamed
+        assertEquals("signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0000000000000010, cause: null pointer dereference", truncated.summary);
         assertTrue(truncated.text, truncated.text.contains("(decoding stopped: "));
     }
 }

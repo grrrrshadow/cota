@@ -150,6 +150,28 @@ public class ExitReportTest {
     }
 
     @Test
+    public void keepsTheNewestLinesOfEveryLogBuffer() {
+        // debuggerd writes the system buffer first, then main with up to 500 lines
+        TombstoneFixture.Proto system = new TombstoneFixture.Proto().string(1, "system")
+            .message(2, new TombstoneFixture.Proto().string(1, "10-25 14:05:11.990").varint(3, 12400).varint(4, 6).string(5, "ActivityThread").string(6, "newest system line"));
+        TombstoneFixture.Proto main = new TombstoneFixture.Proto().string(1, "main");
+        for (int i = 0; i < 500; i++) {
+            main.message(2, new TombstoneFixture.Proto().string(1, String.format(java.util.Locale.ENGLISH, "10-25 14:05:%02d.%03d", i / 100, i % 100))
+                .varint(3, 12400).varint(4, 4).string(5, "virgl").string(6, "main line "+i));
+        }
+        byte[] data = new TombstoneFixture.Proto().varint(1, 1).varint(6, 12400)
+            .message(10, new TombstoneFixture.Proto().varint(1, 11).string(2, "SIGSEGV"))
+            .message(18, system).message(18, main).toByteArray();
+        Tombstone tombstone = Tombstone.parse(data, data.length);
+        assertNull(tombstone.error);
+        String text = tombstone.toText(16 * 1024);
+        assertTrue(text, text.contains("log (last "+Tombstone.MAX_LOG_LINES+" lines of this process):\n"));
+        assertTrue(text, text.endsWith("  10-25 14:05:11.990 12400 E ActivityThread: newest system line\n"));
+        assertTrue(text, text.contains("  10-25 14:05:04.099 12400 I virgl: main line 499\n"));
+        assertFalse(text, text.contains("main line 460\n"));
+    }
+
+    @Test
     public void keepsWhatItGotFromATruncatedTombstone() {
         byte[] data = TombstoneFixture.virglSegv();
         // the data stops inside the threads: signal and cause are complete, the rest is gone
@@ -159,7 +181,14 @@ public class ExitReportTest {
         assertTrue(tombstone.isUsable());
         assertEquals(11, tombstone.signalNumber);
         assertTrue(tombstone.summary(), tombstone.summary().startsWith("signal 11 (SIGSEGV), code 1 (SEGV_MAPERR)"));
-        assertTrue(tombstone.toText(16 * 1024).contains("(decoding stopped: "));
+        assertEquals(1, tombstone.threads.size());
+        assertNull(tombstone.getCrashingThread());
+        assertFalse(tombstone.summary(), tombstone.summary().contains("'main'"));
+        String text = tombstone.toText(16 * 1024);
+        assertTrue(text, text.contains("pid: 12345, tid: 12400, name: ?  >>> org.winlator <<<\n"));
+        assertTrue(text, text.contains("backtrace: thread 12400 is not in the data\n"));
+        assertTrue(text, text.contains("other threads (1):\n  12345 'main': libc.so (__epoll_pwait+8)\n"));
+        assertTrue(text, text.contains("(decoding stopped: "));
     }
 
     @Test
