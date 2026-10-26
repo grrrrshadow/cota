@@ -20,6 +20,6 @@ for i in $(seq "$ROUNDS"); do
   for c in "$@"; do
     id=$(git -C "$REPO" rev-parse --short "$c")
     echo "=== $id round $i, load $(cut -d' ' -f1 /proc/loadavg)"
-    "$HERE/run-bench.sh" "$WORK/server-$id" "$id-$i" | grep -E "^glxgears|^gl33test: harness|^dump|^two"
+    "$HERE/run-bench.sh" "$WORK/server-$id" "$id-$i" | grep -E "^glxgears|^gl33test: harness|^dump|^two|^readback"
   done
 done

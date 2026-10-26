@@ -3675,6 +3675,9 @@ void vrend_launch_grid(struct vrend_context *ctx,
       }
       ctx->sub->shader_dirty = true;
    }
+   /* No program: a grid launched without a compute shader that ever linked (as upstream checks) */
+   if (!ctx->sub->prog)
+      return;
    vrend_use_program(ctx, ctx->sub->prog->id);
 
    vrend_draw_bind_ubo_shader(ctx, PIPE_SHADER_COMPUTE, 0);
@@ -4771,8 +4774,11 @@ static int vrend_renderer_resource_allocate_texture(struct vrend_resource *gr)
    gltype = tex_conv_table[format].gltype;
 
    if (internalformat == 0) {
+      /* A format this host has no GLES format for. The callers free gr themselves: freeing it here
+       * too was a double free (resource_create) or a use after free (the blit's intermediate copy). */
       glBindTexture(gr->target, 0);
-      FREE(gt);
+      glDeleteTextures(1, &gr->id);
+      gr->id = 0;
       return EINVAL;
    }
 

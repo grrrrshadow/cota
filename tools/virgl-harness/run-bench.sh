@@ -1,11 +1,15 @@
 #!/bin/bash
 # Runs the guest (Mesa 23.1.9 virpipe from build-guest.sh) against a harness server (build-host.sh) under Xvfb:
-# glxinfo -B, glxgears, the GL 3.3 core test, a frame dump for comparing hosts, and two clients at once.
+# glxinfo -B, glxgears, the GL 3.3 core test, a frame dump for comparing hosts, two clients at once, and the readback
+# test (OpenTTD Decouple's 3D path: a second shared 3.3 core context, MRT framebuffers, glReadPixels, pixels checked).
 # The server prints fps, its own thread's CPU time per 1000 frames and per-frame call counts.
 # Order: build-guest.sh, build-host.sh OUT, run-bench.sh OUT (compare.sh does the last two for several commits).
 # Usage: tools/virgl-harness/run-bench.sh SERVER_BINARY [LABEL]
 #   GEARS_SECS=20 GEARS_ARGS="-geometry 1280x720" GL33_FRAMES=3000 DISPLAY_NUM=91 WORK=/tmp/virgl-harness
 #   ONLY_GEARS=1 skips everything after glxgears
+#   MALI_GLES=1 hides the host's GLES extensions the phone's Mali-G615 lacks (mali-g615-gles.override)
+#   READBACK_THREADS=1 runs the readback test with the video context on its own thread, as the game does (needs a
+#     guest with guest-patches/, Bruno's guest shares its socket between threads without a lock)
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 WORK=${WORK:-/tmp/virgl-harness}
@@ -15,7 +19,7 @@ OUT=$WORK/results/$LABEL
 GEARS_SECS=${GEARS_SECS:-20}
 GL33_FRAMES=${GL33_FRAMES:-3000}
 DISPLAY_NUM=${DISPLAY_NUM:-91}
-GUEST_LIB=$WORK/guest-build/src/gallium/targets/libgl-xlib
+GUEST_LIB=${GUEST_LIB:-$WORK/guest-build/src/gallium/targets/libgl-xlib}   # another guest build: GUEST_LIB=dir
 SOCK=/tmp/.virgl-harness-$LABEL.sock   # sun_path is 108 bytes, WORK may be deeper than that
 mkdir -p "$OUT"
 export DISPLAY=:$DISPLAY_NUM
@@ -26,6 +30,8 @@ if [ ! -S "/tmp/.X11-unix/X$DISPLAY_NUM" ]; then
 fi
 [ "$WORK/gl33test" -nt "$HERE/gl33test.c" ] || gcc -O2 -I"$WORK/mesa3d-custom/virgl-23.1.9/include" "$HERE/gl33test.c" -o "$WORK/gl33test" \
   -L"$GUEST_LIB" -lGL -lX11 -lm
+[ "$WORK/readbacktest" -nt "$HERE/readbacktest.c" ] || gcc -O2 -I"$WORK/mesa3d-custom/virgl-23.1.9/include" "$HERE/readbacktest.c" \
+  -o "$WORK/readbacktest" -L"$GUEST_LIB" -lGL -lX11 -lm -lpthread
 
 # Same variables the app sets for VirGL (VirGL 4.3 core in the settings dialog)
 guest() {
@@ -33,8 +39,11 @@ guest() {
       MESA_GL_VERSION_OVERRIDE=4.3FC "$@"
 }
 
+HOST_ENV=()
+[ -z "${MALI_GLES:-}" ] || HOST_ENV=("MESA_EXTENSION_OVERRIDE=$(grep -v '^#' "$HERE/mali-g615-gles.override" | tr '\n' ' ')")
+
 start_server() {
-  env EGL_PLATFORM=surfaceless VIRGL_SERVER_PATH="$SOCK" HARNESS_EXIT_IDLE=1 HARNESS_QUIET=1 "${@:2}" \
+  env EGL_PLATFORM=surfaceless VIRGL_SERVER_PATH="$SOCK" HARNESS_EXIT_IDLE=1 HARNESS_QUIET=1 "${HOST_ENV[@]}" "${@:2}" \
       "$SERVER" >"$OUT/$1.server.log" 2>&1 &
   SERVER_PID=$!
   for _ in $(seq 50); do [ -S "$SOCK" ] && break; sleep 0.1; done
@@ -79,3 +88,10 @@ wait "$GEARS" || true
 stop_server
 echo "two clients: $(tail -1 "$OUT/two-gl33test.txt")"
 grep 'done:' "$OUT/two.server.log" | sed 's/^/  /'
+
+# The 3D of OpenTTD Decouple (three_d_gpu.cpp): buildings, pictures and ground drawn by a second context sharing the
+# first one's objects into MRT framebuffers and read back; every pixel compared with the expected one
+start_server readback
+guest env READBACK_THREADS="${READBACK_THREADS:-0}" timeout 300 "$WORK/readbacktest" 3 >"$OUT/readback.txt" 2>&1 || true
+stop_server
+echo "readback: $(grep -E 'PASS|FAIL' "$OUT/readback.txt" | tail -1 | sed 's/^readbacktest: //')"

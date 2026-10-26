@@ -1,0 +1,184 @@
+Guest fix for brunodev85/mesa3d-custom virgl-23.1.9 (the VirGL guest in virgl-23.1.9.tzst), not yet in the app.
+
+The "server" winsys shares one socket between every GL context of a process, but writes a command buffer in two
+write() calls, reads answers without a lock and numbers resources with an unlocked static counter. A game that draws
+from two threads (OpenTTD Decouple: the video driver's context and its 3D context sharing it; mesa_glthread adds one
+more thread per context) gets the same resource number twice, requests run into each other and one thread reads the
+other's answer: GL_OUT_OF_MEMORY on texture creation, hangs, stale readbacks. tools/virgl-harness/readbacktest
+READBACK_THREADS=1 shows it; with this patch it passes.
+
+The patch sends each request together with its answer under a mutex and takes resource numbers atomically.
+Apply: patch -p1 -d mesa3d-custom/virgl-23.1.9 < 0001-server-winsys-one-request-at-a-time.patch
+
+diff --git a/src/gallium/winsys/virgl/server/virgl_server.c b/src/gallium/winsys/virgl/server/virgl_server.c
+index 4621923..7ab70c9 100644
+--- a/src/gallium/winsys/virgl/server/virgl_server.c
++++ b/src/gallium/winsys/virgl/server/virgl_server.c
+@@ -113,7 +113,9 @@ static int virgl_server_send_create_renderer(struct virgl_server_winsys *vws)
+    send_buf[0] = 0;
+    send_buf[1] = VCMD_CREATE_RENDERER;
+ 
++   mtx_lock(&vws->io_mutex);
+    virgl_block_write(vws->sock_fd, &send_buf, sizeof(send_buf));
++   mtx_unlock(&vws->io_mutex);
+    return 0;
+ }
+ 
+@@ -156,11 +158,14 @@ int virgl_server_send_get_caps(struct virgl_server_winsys *vws,
+    send_buf[0] = 0;
+    send_buf[1] = VCMD_GET_CAPS;
+ 
++   mtx_lock(&vws->io_mutex);
+    virgl_block_write(vws->sock_fd, &send_buf, sizeof(send_buf));
+ 
+    ret = virgl_block_read(vws->sock_fd, resp_buf, sizeof(resp_buf));
+-   if (ret <= 0)
++   if (ret <= 0) {
++      mtx_unlock(&vws->io_mutex);
+       return 0;
++   }
+ 
+    uint32_t resp_size = resp_buf[0] - 1;
+    
+@@ -168,6 +173,7 @@ int virgl_server_send_get_caps(struct virgl_server_winsys *vws,
+ 	  resp_size = caps_size;
+ 
+    virgl_block_read(vws->sock_fd, &caps->caps, resp_size);
++   mtx_unlock(&vws->io_mutex);
+    return 0;
+ }
+ 
+@@ -200,12 +206,16 @@ int virgl_server_send_resource_create(struct virgl_server_winsys *vws,
+    send_buf[11] = nr_samples;
+    send_buf[12] = size;
+ 
++   mtx_lock(&vws->io_mutex);
+    virgl_block_write(vws->sock_fd, &send_buf, sizeof(send_buf));
+    
+-   if (size == 0)
++   if (size == 0) {
++      mtx_unlock(&vws->io_mutex);
+       return 0;
++   }
+ 
+    *out_fd = virgl_server_recv_fd(vws->sock_fd);
++   mtx_unlock(&vws->io_mutex);
+    if (*out_fd < 0)
+       return -1;
+ 
+@@ -220,7 +230,9 @@ int virgl_server_send_resource_destroy(struct virgl_server_winsys *vws,
+    send_buf[1] = VCMD_RESOURCE_DESTROY;
+    send_buf[2] = handle;
+ 
++   mtx_lock(&vws->io_mutex);
+    virgl_block_write(vws->sock_fd, &send_buf, sizeof(send_buf));
++   mtx_unlock(&vws->io_mutex);
+    return 0;
+ }
+ 
+@@ -246,7 +258,9 @@ int virgl_server_send_transfer_get(struct virgl_server_winsys *vws,
+    send_buf[10] = data_size;
+    send_buf[11] = offset;
+ 
++   mtx_lock(&vws->io_mutex);
+    virgl_block_write(vws->sock_fd, &send_buf, sizeof(send_buf));
++   mtx_unlock(&vws->io_mutex);
+    return 0;
+ }
+ 
+@@ -272,7 +286,9 @@ int virgl_server_send_transfer_put(struct virgl_server_winsys *vws,
+    send_buf[10] = data_size;
+    send_buf[11] = offset;
+    
++   mtx_lock(&vws->io_mutex);
+    virgl_block_write(vws->sock_fd, &send_buf, sizeof(send_buf));
++   mtx_unlock(&vws->io_mutex);
+    return 0;
+ }
+ 
+@@ -283,8 +299,10 @@ int virgl_server_submit_cmd(struct virgl_server_winsys *vws,
+    send_buf[0] = cbuf->base.cdw;
+    send_buf[1] = VCMD_SUBMIT_CMD;
+ 
++   mtx_lock(&vws->io_mutex);
+    virgl_block_write(vws->sock_fd, &send_buf, sizeof(send_buf));
+    virgl_block_write(vws->sock_fd, cbuf->buf, cbuf->base.cdw * 4);
++   mtx_unlock(&vws->io_mutex);
+    return 0;
+ }
+ 
+@@ -298,8 +316,11 @@ int virgl_server_send_resource_busy_wait(struct virgl_server_winsys *vws, int ha
+    send_buf[2] = handle;
+    send_buf[3] = flags;
+ 
++   recv_buf[2] = 0;
++   mtx_lock(&vws->io_mutex);
+    virgl_block_write(vws->sock_fd, &send_buf, sizeof(send_buf));
+    virgl_block_read(vws->sock_fd, recv_buf, sizeof(recv_buf));
++   mtx_unlock(&vws->io_mutex);
+    return recv_buf[2];
+ }
+ 
+@@ -313,6 +334,8 @@ int virgl_server_send_flush_frontbuffer(struct virgl_server_winsys *vws,
+    send_buf[2] = handle;
+    send_buf[3] = drawable;
+    
++   mtx_lock(&vws->io_mutex);
+    virgl_block_write(vws->sock_fd, &send_buf, sizeof(send_buf));
++   mtx_unlock(&vws->io_mutex);
+    return 0;
+ }
+diff --git a/src/gallium/winsys/virgl/server/virgl_server_winsys.c b/src/gallium/winsys/virgl/server/virgl_server_winsys.c
+index 28ec383..8607aed 100644
+--- a/src/gallium/winsys/virgl/server/virgl_server_winsys.c
++++ b/src/gallium/winsys/virgl/server/virgl_server_winsys.c
+@@ -250,7 +250,9 @@ virgl_server_winsys_resource_create(struct virgl_winsys *vws,
+ {
+    struct virgl_server_winsys *vsws = virgl_server_winsys(vws);
+    struct virgl_hw_res *res;
+-   static int handle = 1;
++   /* Taken once per resource and atomically: two GL threads got the same number before */
++   static uint32_t last_handle;
++   uint32_t handle = p_atomic_inc_return(&last_handle);
+    int fd = -1;
+    struct virgl_resource_params params = { .size = size,
+                                            .bind = bind,
+@@ -307,7 +309,7 @@ virgl_server_winsys_resource_create(struct virgl_winsys *vws,
+ 
+ out:
+    virgl_resource_cache_entry_init(&res->cache_entry, params);
+-   res->res_handle = handle++;
++   res->res_handle = handle;
+    pipe_reference_init(&res->reference, 1);
+    p_atomic_set(&res->num_cs_references, 0);
+    return res;
+@@ -646,6 +648,7 @@ virgl_server_winsys_destroy(struct virgl_winsys *vws)
+    virgl_resource_cache_flush(&vsws->cache);
+ 
+    mtx_destroy(&vsws->mutex);
++   mtx_destroy(&vsws->io_mutex);
+    FREE(vsws);
+ }
+ 
+@@ -679,6 +682,7 @@ virgl_server_winsys_wrap(struct sw_winsys *sws)
+    if (!vsws)
+       return NULL;
+ 
++   (void) mtx_init(&vsws->io_mutex, mtx_plain);
+    virgl_server_connect(vsws);
+    vsws->sws = sws;
+ 
+diff --git a/src/gallium/winsys/virgl/server/virgl_server_winsys.h b/src/gallium/winsys/virgl/server/virgl_server_winsys.h
+index ca8af76..ea8814c 100644
+--- a/src/gallium/winsys/virgl/server/virgl_server_winsys.h
++++ b/src/gallium/winsys/virgl/server/virgl_server_winsys.h
+@@ -45,6 +45,9 @@ struct virgl_server_winsys {
+ 
+    struct virgl_resource_cache cache;
+    mtx_t mutex;
++   /* One request and its answer at a time on the socket: every GL context of the process (and
++    * every glthread) shares it, and the server reads a byte stream. */
++   mtx_t io_mutex;
+ };
+ 
+ struct virgl_hw_res {
