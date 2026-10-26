@@ -575,7 +575,13 @@ int virgl_server_flush_frontbuffer(struct virgl_client *client, UNUSED uint32_t 
 
    if (handle != client->renderer->handle) {
       struct vrend_context *ctx = vrend_lookup_renderer_ctx(client, client->renderer->ctx_id);
-      struct vrend_resource *res = vrend_renderer_ctx_res_lookup(ctx, handle);
+      struct vrend_resource *res = ctx ? vrend_renderer_ctx_res_lookup(ctx, handle) : NULL;
+
+      /* A handle the context does not have (destroyed, refused as a duplicate, or bytes of two guest
+       * threads' requests run into each other): nothing to show. Binding it dereferenced NULL and took
+       * the whole app down. */
+      if (!res)
+         return 0;
 
       if (client->renderer->framebuffer)
          glDeleteFramebuffers(1, &client->renderer->framebuffer);
