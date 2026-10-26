@@ -578,7 +578,11 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
 
         guestProgramLauncherComponent.setEnvVars(envVars);
-        guestProgramLauncherComponent.setTerminationCallback((status) -> exit());
+        guestProgramLauncherComponent.setTerminationCallback((status) -> {
+            // Back at the container list looks the same as a crash; the next run's log only says "restart", so say why here.
+            if (!exiting.get()) ProcessHelper.debugLog("[DL] the guest program ended (status "+status+"), leaving the session");
+            exit();
+        });
         environment.addComponent(guestProgramLauncherComponent);
 
         if (isGenerateWineprefix()) {
