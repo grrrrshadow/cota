@@ -1,0 +1,40 @@
+# MESA_EXTENSION_OVERRIDE for the harness host (Mesa GLES 3.2 on llvmpipe) so that it offers what the phone's
+# Mali-G615 (Motorola Edge 60 Fusion, r44p1) offers: every extension Mesa has and Mali does not, minus the ones Mesa
+# cannot switch off (turning one of those off drops all of them, BGRA8888 and read_format_bgra too) and the ones whose
+# removal takes Mesa down to ES 2.0-3.1 although they are core in 3.2. run-bench.sh MALI_GLES=1 uses it.
+-GL_ANGLE_texture_compression_dxt3
+-GL_ANGLE_texture_compression_dxt5
+-GL_APPLE_sync
+-GL_EXT_EGL_image_storage
+-GL_EXT_base_instance
+-GL_EXT_blend_func_extended
+-GL_EXT_clip_cull_distance
+-GL_EXT_compressed_ETC1_RGB8_sub_texture
+-GL_EXT_conservative_depth
+-GL_EXT_depth_clamp
+-GL_EXT_disjoint_timer_query
+-GL_EXT_memory_object
+-GL_EXT_memory_object_fd
+-GL_EXT_render_snorm
+-GL_EXT_shader_clock
+-GL_EXT_shader_framebuffer_fetch_non_coherent
+-GL_EXT_shader_group_vote
+-GL_EXT_texture_compression_bptc
+-GL_EXT_texture_compression_dxt1
+-GL_EXT_texture_compression_rgtc
+-GL_EXT_texture_compression_s3tc
+-GL_EXT_texture_compression_s3tc_srgb
+-GL_EXT_texture_filter_minmax
+-GL_EXT_texture_mirror_clamp_to_edge
+-GL_EXT_texture_norm16
+-GL_EXT_texture_query_lod
+-GL_EXT_texture_shadow_lod
+-GL_EXT_texture_view
+-GL_MESA_framebuffer_flip_y
+-GL_NV_alpha_to_coverage_dither_control
+-GL_NV_conditional_render
+-GL_NV_generate_mipmap_sRGB
+-GL_NV_shader_noperspective_interpolation
+-GL_NV_texture_barrier
+-GL_OES_texture_view
+-GL_OES_viewport_array

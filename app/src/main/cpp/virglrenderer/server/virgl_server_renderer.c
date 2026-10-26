@@ -325,12 +325,23 @@ int virgl_server_resource_create(struct virgl_client *client, UNUSED uint32_t le
    args.nr_samples = recv_buf[9];
    args.flags = 0;
 
+   /* A handle in use: the guest driver numbers its resources without a lock, and two GL threads
+    * (a game's video context and its 3D context) can get the same number. Refusing this one
+    * keeps the first resource and the connection; killing it stopped all of the guest's GL. */
    if (util_hash_table_get(client->renderer->iovec_hash, intptr_to_pointer(args.handle)))
-      return -EEXIST;
-
-   ret = vrend_renderer_resource_create(client, &args, NULL, 0);
-   if (ret)
-      return ret;
+      ret = EEXIST;
+   else
+      ret = vrend_renderer_resource_create(client, &args, NULL, 0);
+   if (ret) {
+      /* The guest waits for the shared memory's fd of a resource with storage: a message without
+       * one makes its resource_create fail (GL_OUT_OF_MEMORY) instead of waiting for good. */
+      if (recv_buf[10] != 0) {
+         char c = 0;
+         if (virgl_block_write(client->fd, &c, 1) < 0)
+            return -1;
+      }
+      return 0;
+   }
 
    vrend_renderer_attach_res_ctx(client, client->renderer->ctx_id, args.handle);
 
@@ -488,6 +499,12 @@ int virgl_server_submit_cmd(struct virgl_client *client, uint32_t length)
 {
    uint32_t *cbuf;
    int cbuf_len, ret;
+
+   /* The guest's command buffers hold at most 64 Ki + a few dwords. A length past that is not
+    * a command buffer but bytes of two guest threads' requests run into each other: length * 4
+    * would overflow, and the decoder would read past the buffer it was given. */
+   if (length > 1024 * 1024)
+      return -1;
 
    cbuf_len = length * 4;
    cbuf = malloc(cbuf_len);

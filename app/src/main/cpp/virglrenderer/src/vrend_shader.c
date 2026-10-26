@@ -5874,7 +5874,15 @@ static void emit_ios_fs(struct dump_ctx *ctx)
       for (i = 0; i < ctx->num_outputs; i++) {
 
          if (!ctx->outputs[i].glsl_predefined_no_emit) {
-            emit_ios_generic(ctx, io_out, "", &ctx->outputs[i],
+            /* GLSL ES: an output without a location is not tied to its draw buffer. Mesa takes
+             * them in the order declared, which is the guest's TGSI order and not always the
+             * semantic index (an MRT shader then writes its colours into each other's buffers),
+             * and the spec does not allow more than one output without a location at all.
+             * Upstream virglrenderer gives them their locations on GLES hosts too. */
+            char prefix[32] = "";
+            if (ctx->outputs[i].name == TGSI_SEMANTIC_COLOR && !ctx->key->fs_logicop_enabled)
+               snprintf(prefix, sizeof(prefix), "layout(location = %d)", ctx->outputs[i].sid);
+            emit_ios_generic(ctx, io_out, prefix, &ctx->outputs[i],
                               ctx->outputs[i].fbfetch_used ? "inout" : "out", "");
 
          } else if (ctx->outputs[i].invariant || ctx->outputs[i].precise) {

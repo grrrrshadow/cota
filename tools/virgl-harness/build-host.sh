@@ -4,6 +4,7 @@
 # Needs gcc, libx11-dev and the libEGL.so.1/libGLESv2.so.2 runtime (libegl1, libgles2, libegl-mesa0); the Khronos
 # headers come from the Mesa tree that build-guest.sh fetches (MESA_SRC).
 # Usage: tools/virgl-harness/build-host.sh [OUT] [VIRGLRENDERER_DIR]
+#   SANITIZE=address   builds with AddressSanitizer (and UBSan's pointer checks), for the crash hunts
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 WORK=${WORK:-/tmp/virgl-harness}
@@ -21,14 +22,17 @@ CFLAGS=(-O2 -g -fPIC -Wno-unused-function -Wimplicit-function-declaration -Wno-i
         -DGL_GLEXT_PROTOTYPES -DEGL_NO_X11
         -I"$HERE/stub" -I"$MESA_SRC/include"
         -I"$SRC/src" -I"$SRC/src/gallium/include" -I"$SRC/src/gallium/auxiliary" -I"$SRC/src/gallium/auxiliary/util" -I"$SRC/server")
+SAN=()
+[ -z "${SANITIZE:-}" ] || SAN=(-fsanitize="$SANITIZE" -fno-omit-frame-pointer)
+CFLAGS+=("${SAN[@]}")
 pids=()
 for s in "${SOURCES[@]}"; do
   gcc "${CFLAGS[@]}" -c "$SRC/$s" -o "$OBJ/$(echo "$s" | tr / _).o" 2>>"$OBJ/warnings.log" &
   pids+=($!)
 done
 for p in "${pids[@]}"; do wait "$p"; done
-gcc -O2 -g -DEGL_NO_X11 -I"$HERE/stub" -I"$MESA_SRC/include" -c "$HERE/harness_server.c" -o "$OBJ/harness_server.o"
-gcc -o "$OUT" "$OBJ"/*.o -Wl,--wrap=eglMakeCurrent -Wl,--wrap=glClientWaitSync \
+gcc -O2 -g "${SAN[@]}" -DEGL_NO_X11 -I"$HERE/stub" -I"$MESA_SRC/include" -c "$HERE/harness_server.c" -o "$OBJ/harness_server.o"
+gcc "${SAN[@]}" -o "$OUT" "$OBJ"/*.o -Wl,--wrap=eglMakeCurrent -Wl,--wrap=glClientWaitSync \
     -l:libEGL.so.1 -l:libGLESv2.so.2 -lX11 -lm -lpthread
 grep -c "warning:" "$OBJ/warnings.log" | xargs -I{} echo "{} compiler warnings (same code as the NDK build)" >&2
 echo "$OUT"
