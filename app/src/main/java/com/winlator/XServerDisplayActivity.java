@@ -51,6 +51,7 @@ import com.winlator.core.CPUStatus;
 import com.winlator.core.CrashLog;
 import com.winlator.core.DefaultVersion;
 import com.winlator.core.EnvVars;
+import com.winlator.core.ExitReasons;
 import com.winlator.core.FileUtils;
 import com.winlator.core.GPUHelper;
 import com.winlator.core.GeneralComponents;
@@ -150,6 +151,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         AppUtils.setActivityTheme(this);
         super.onCreate(savedInstanceState);
         CrashLog.install(this);
+        ExitReasons.reportPreviousExits(this);
         AppUtils.hideSystemUI(this);
         AppUtils.keepScreenOn(this);
         setContentView(R.layout.xserver_display_activity);
@@ -576,7 +578,11 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
 
         guestProgramLauncherComponent.setEnvVars(envVars);
-        guestProgramLauncherComponent.setTerminationCallback((status) -> exit());
+        guestProgramLauncherComponent.setTerminationCallback((status) -> {
+            // Back at the container list looks the same as a crash; the next run's log only says "restart", so say why here.
+            if (!exiting.get()) ProcessHelper.debugLog("[DL] the guest program ended (status "+status+"), leaving the session");
+            exit();
+        });
         environment.addComponent(guestProgramLauncherComponent);
 
         if (isGenerateWineprefix()) {
@@ -774,6 +780,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         lines.add("Env: "+env);
 
         for (String line : lines) ProcessHelper.debugLog("[DL] "+line);
+        ExitReasons.logPreviousRun(ProcessHelper::debugLog);
+        ExitReasons.setState(this, "session OpenGL="+graphicsDriver[1]+" Vulkan="+graphicsDriver[0]);
     }
 
     private void extractGraphicsDriverFiles() {

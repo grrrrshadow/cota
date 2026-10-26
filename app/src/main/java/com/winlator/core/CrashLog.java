@@ -11,6 +11,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
@@ -50,15 +51,28 @@ public abstract class CrashLog {
         }
     }
 
-    private static void write(Thread thread, Throwable throwable, String appVersion) throws IOException {
+    public static String getDeviceInfo() {
+        return "Android "+Build.VERSION.RELEASE+" (API "+Build.VERSION.SDK_INT+"), "+Build.MANUFACTURER+" "+Build.MODEL;
+    }
+
+    // Shared with ExitReasons; past the size cap the file starts over.
+    public static synchronized void append(String text) throws IOException {
         File crashFile = getCrashFile();
         boolean append = crashFile.length() < MAX_FILE_SIZE;
-        try (PrintWriter writer = new PrintWriter(new FileWriter(crashFile, append))) {
+        try (FileWriter writer = new FileWriter(crashFile, append)) {
+            writer.write(text);
+        }
+    }
+
+    private static void write(Thread thread, Throwable throwable, String appVersion) throws IOException {
+        StringWriter text = new StringWriter();
+        try (PrintWriter writer = new PrintWriter(text)) {
             String time = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH).format(new Date());
-            writer.println("=== "+time+"  Winlator DL "+appVersion+"  Android "+Build.VERSION.RELEASE+"  "+Build.MANUFACTURER+" "+Build.MODEL+" ===");
+            writer.println("=== "+time+"  Winlator DL "+appVersion+"  "+getDeviceInfo()+" ===");
             writer.println("Thread: "+thread.getName());
             throwable.printStackTrace(writer);
             writer.println();
         }
+        append(text.toString());
     }
 }
