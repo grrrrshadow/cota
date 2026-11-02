@@ -1,0 +1,187 @@
+OpenTTD Decouple: denik graficke karty (3D obrazky)                                                                     
+krok okno pro kartu                                                                                                     
+krok format pixelu sdileny s ovladacem videa                                                                            
+krok prvni kontext OpenGL (wglCreateContext, wglMakeCurrent)                                                            
+krok kontext OpenGL 3.3 core (wglCreateContextAttribsARB)                                                               
+krok kontext OpenGL 3.3 core sdileny s ovladacem videa                                                                  
+krok funkce OpenGL                                                                                                      
+krok verze OpenGL (glGetString)                                                                                         
+karta: zink (Vortek (Mali-G615 MC2)), OpenGL 4.4 (Core Profile) Mesa 22.2.5                                             
+krok preklad programu vozidel (shader)                                                                                  
+krok preklad programu svetel (shader)                                                                                   
+krok preklad programu budov z oci (shader)                                                                              
+krok preklad programu zeme plochy (shader)                                                                              
+krok preklad programu postav z oci (shader)                                                                             
+krok ramec a buffery (framebuffer, renderbuffer, vertex array)                                                          
+krok zkouska cisteni s nuzkami                                                                                          
+cisteni s nuzkami: uvnitr smazano (0 0), venku zustalo (255 255)                                                        
+krok zkouska cisteni s nuzkami mezi obrazky                                                                             
+cisteni s nuzkami mezi obrazky: obdelnik smazan (0), auto v nem je (255 0 255), venku zustalo (255)                     
+zink odklada mazani: karta maze kreslenim                                                                               
+krok preklad programu snimku z oci (shader)                                                                             
+start v poradku: zink (Vortek (Mali-G615 MC2)), OpenGL 4.4 (Core Profile) Mesa 22.2.5, textures up to 16384, pictures up
+krok tvar na kartu: 46 rohu, normaly                                                                                    
+krok trojuhelniky na kartu: 36 (nejvyssi roh 45)                                                                        
+krok textura na kartu: 118x136                                                                                          
+krok textura na kartu: 118x136                                                                                          
+krok obrazky 1-1: 1 najednou, 2048x80                                                                                   
+krok ramec 2048x256 (glRenderbufferStorage, glCheckFramebufferStatus)                                                   
+krok kresleni obrazku 1-1 (glDrawElements)                                                                              
+krok cteni obrazku 1-1 zpet (glReadPixels), 2048x80, hra 429 MB, karta 0 MB                                             
+obrazek 1 hotov (63.1 ms)                                                                                               
+krok tvar na kartu: 114 rohu, normaly                                                                                   
+krok trojuhelniky na kartu: 109 (nejvyssi roh 113)                                                                      
+krok textura na kartu: 84x128                                                                                           
+krok textura na kartu: 84x128                                                                                           
+krok obrazky 2-2: 1 najednou, 2048x94                                                                                   
+krok kresleni obrazku 2-2 (glDrawElements)                                                                              
+krok cteni obrazku 2-2 zpet (glReadPixels), 2048x94, hra 429 MB, karta 0 MB                                             
+obrazek 2 hotov (8.5 ms)                                                                                                
+krok tvar na kartu: 120 rohu, normaly                                                                                   
+krok trojuhelniky na kartu: 113 (nejvyssi roh 119)                                                                      
+krok textura na kartu: 81x127                                                                                           
+krok textura na kartu: 81x127                                                                                           
+krok obrazky 3-3: 1 najednou, 2048x100                                                                                  
+krok kresleni obrazku 3-3 (glDrawElements)                                                                              
+krok cteni obrazku 3-3 zpet (glReadPixels), 2048x100, hra 429 MB, karta 0 MB                                            
+obrazek 3 hotov (4.8 ms)                                                                                                
+krok tvar na kartu: 114 rohu, normaly                                                                                   
+krok trojuhelniky na kartu: 109 (nejvyssi roh 113)                                                                      
+krok textura na kartu: 174x247                                                                                          
+krok textura na kartu: 174x247                                                                                          
+krok obrazky 4-4: 1 najednou, 2048x152                                                                                  
+krok kresleni obrazku 4-4 (glDrawElements)                                                                              
+krok cteni obrazku 4-4 zpet (glReadPixels), 2048x152, hra 430 MB, karta 0 MB                                            
+obrazek 4 hotov (8.2 ms)                                                                                                
+krok tvar na kartu: 114 rohu, normaly                                                                                   
+krok trojuhelniky na kartu: 109 (nejvyssi roh 113)                                                                      
+krok textura na kartu: 83x128                                                                                           
+krok textura na kartu: 83x128                                                                                           
+krok obrazky 5-5: 1 najednou, 2048x92                                                                                   
+krok kresleni obrazku 5-5 (glDrawElements)                                                                              
+krok cteni obrazku 5-5 zpet (glReadPixels), 2048x92, hra 430 MB, karta 0 MB                                             
+obrazek 5 hotov (8.2 ms)                                                                                                
+krok obrazky 6-6: 1 najednou, 2048x104                                                                                  
+krok kresleni obrazku 6-6 (glDrawElements)                                                                              
+krok cteni obrazku 6-6 zpet (glReadPixels), 2048x104, hra 430 MB, karta 0 MB                                            
+obrazek 6 hotov (3.5 ms)                                                                                                
+krok tvar na kartu: 799 rohu, normaly                                                                                   
+krok trojuhelniky na kartu: 285 (nejvyssi roh 798)                                                                      
+krok textura na kartu: 18x15                                                                                            
+krok textura na kartu: 18x15                                                                                            
+krok textura na kartu: 25x64                                                                                            
+krok obrazky 7-7: 1 najednou, 2048x66                                                                                   
+krok kresleni obrazku 7-7 (glDrawElements)                                                                              
+krok cteni obrazku 7-7 zpet (glReadPixels), 2048x66, hra 430 MB, karta 0 MB                                             
+obrazek 7 hotov (4.1 ms)                                                                                                
+krok obrazky 8-8: 1 najednou, 2048x34                                                                                   
+krok kresleni obrazku 8-8 (glDrawElements)                                                                              
+krok cteni obrazku 8-8 zpet (glReadPixels), 2048x34, hra 430 MB, karta 0 MB                                             
+obrazek 8 hotov (2.4 ms)                                                                                                
+krok tvar na kartu: 114 rohu, normaly                                                                                   
+krok trojuhelniky na kartu: 109 (nejvyssi roh 113)                                                                      
+krok textura na kartu: 149x253                                                                                          
+krok textura na kartu: 149x253                                                                                          
+krok obrazky 9-9: 1 najednou, 2048x50                                                                                   
+krok kresleni obrazku 9-9 (glDrawElements)                                                                              
+krok cteni obrazku 9-9 zpet (glReadPixels), 2048x50, hra 430 MB, karta 1 MB                                             
+obrazek 9 hotov (3.6 ms)                                                                                                
+krok obrazky 10-10: 1 najednou, 2048x60                                                                                 
+krok kresleni obrazku 10-10 (glDrawElements)                                                                            
+krok cteni obrazku 10-10 zpet (glReadPixels), 2048x60, hra 430 MB, karta 1 MB                                           
+obrazek 10 hotov (2.5 ms)                                                                                               
+krok obrazky 11-11: 1 najednou, 2048x24                                                                                 
+krok kresleni obrazku 11-11 (glDrawElements)                                                                            
+krok cteni obrazku 11-11 zpet (glReadPixels), 2048x24, hra 430 MB, karta 1 MB                                           
+obrazek 11 hotov (1.9 ms)                                                                                               
+krok obrazky 12-12: 1 najednou, 2048x58                                                                                 
+krok kresleni obrazku 12-12 (glDrawElements)                                                                            
+krok cteni obrazku 12-12 zpet (glReadPixels), 2048x58, hra 430 MB, karta 1 MB                                           
+obrazek 12 hotov (2.1 ms)                                                                                               
+krok obrazky 13-13: 1 najednou, 2048x122                                                                                
+krok kresleni obrazku 13-13 (glDrawElements)                                                                            
+krok cteni obrazku 13-13 zpet (glReadPixels), 2048x122, hra 430 MB, karta 1 MB                                          
+obrazek 13 hotov (4.6 ms)                                                                                               
+krok obrazky 14-14: 1 najednou, 2048x120                                                                                
+krok kresleni obrazku 14-14 (glDrawElements)                                                                            
+krok cteni obrazku 14-14 zpet (glReadPixels), 2048x120, hra 430 MB, karta 1 MB                                          
+obrazek 14 hotov (3.4 ms)                                                                                               
+krok obrazky 15-15: 1 najednou, 2048x138                                                                                
+krok kresleni obrazku 15-15 (glDrawElements)                                                                            
+krok cteni obrazku 15-15 zpet (glReadPixels), 2048x138, hra 430 MB, karta 1 MB                                          
+obrazek 15 hotov (4.0 ms)                                                                                               
+krok tvar na kartu: 1015 rohu, normaly                                                                                  
+krok trojuhelniky na kartu: 507 (nejvyssi roh 1014)                                                                     
+krok textura na kartu: 35x43                                                                                            
+krok textura na kartu: 35x43                                                                                            
+krok textura na kartu: 24x32                                                                                            
+krok obrazky 16-16: 1 najednou, 2048x80                                                                                 
+krok kresleni obrazku 16-16 (glDrawElements)                                                                            
+krok cteni obrazku 16-16 zpet (glReadPixels), 2048x80, hra 430 MB, karta 1 MB                                           
+obrazek 16 hotov (7.7 ms)                                                                                               
+krok tvar na kartu: 104 rohu, normaly                                                                                   
+krok trojuhelniky na kartu: 101 (nejvyssi roh 103)                                                                      
+krok textura na kartu: 150x212                                                                                          
+krok textura na kartu: 150x212                                                                                          
+krok obrazky 17-17: 1 najednou, 2048x118                                                                                
+krok kresleni obrazku 17-17 (glDrawElements)                                                                            
+krok cteni obrazku 17-17 zpet (glReadPixels), 2048x118, hra 430 MB, karta 1 MB                                          
+obrazek 17 hotov (5.8 ms)                                                                                               
+krok obrazky 18-18: 1 najednou, 2048x132                                                                                
+krok kresleni obrazku 18-18 (glDrawElements)                                                                            
+krok cteni obrazku 18-18 zpet (glReadPixels), 2048x132, hra 430 MB, karta 1 MB                                          
+obrazek 18 hotov (3.9 ms)                                                                                               
+krok obrazky 19-19: 1 najednou, 2048x64                                                                                 
+krok kresleni obrazku 19-19 (glDrawElements)                                                                            
+krok cteni obrazku 19-19 zpet (glReadPixels), 2048x64, hra 430 MB, karta 1 MB                                           
+obrazek 19 hotov (2.1 ms)                                                                                               
+krok obrazky 20-20: 1 najednou, 2048x136                                                                                
+krok kresleni obrazku 20-20 (glDrawElements)                                                                            
+krok cteni obrazku 20-20 zpet (glReadPixels), 2048x136, hra 430 MB, karta 1 MB                                          
+obrazek 20 hotov (4.9 ms)                                                                                               
+krok obrazky 21-21: 1 najednou, 2048x106                                                                                
+krok kresleni obrazku 21-21 (glDrawElements)                                                                            
+krok cteni obrazku 21-21 zpet (glReadPixels), 2048x106, hra 430 MB, karta 1 MB                                          
+obrazek 21 hotov (3.2 ms)                                                                                               
+krok obrazky 22-22: 1 najednou, 2048x122                                                                                
+krok kresleni obrazku 22-22 (glDrawElements)                                                                            
+krok cteni obrazku 22-22 zpet (glReadPixels), 2048x122, hra 430 MB, karta 1 MB                                          
+obrazek 22 hotov (3.3 ms)                                                                                               
+krok obrazky 23-23: 1 najednou, 2048x104                                                                                
+krok kresleni obrazku 23-23 (glDrawElements)                                                                            
+krok cteni obrazku 23-23 zpet (glReadPixels), 2048x104, hra 430 MB, karta 1 MB                                          
+obrazek 23 hotov (3.1 ms)                                                                                               
+krok obrazky 24-24: 1 najednou, 2048x80                                                                                 
+krok kresleni obrazku 24-24 (glDrawElements)                                                                            
+krok cteni obrazku 24-24 zpet (glReadPixels), 2048x80, hra 430 MB, karta 1 MB                                           
+obrazek 24 hotov (3.1 ms)                                                                                               
+krok obrazky 25-25: 1 najednou, 2048x124                                                                                
+krok kresleni obrazku 25-25 (glDrawElements)                                                                            
+krok cteni obrazku 25-25 zpet (glReadPixels), 2048x124, hra 430 MB, karta 1 MB                                          
+obrazek 25 hotov (3.4 ms)                                                                                               
+krok tvar na kartu: 1072 rohu, normaly                                                                                  
+krok trojuhelniky na kartu: 571 (nejvyssi roh 1071)                                                                     
+krok textura na kartu: 36x32                                                                                            
+krok textura na kartu: 36x32                                                                                            
+krok textura na kartu: 25x32                                                                                            
+krok obrazky 26-26: 1 najednou, 2048x98                                                                                 
+krok kresleni obrazku 26-26 (glDrawElements)                                                                            
+krok cteni obrazku 26-26 zpet (glReadPixels), 2048x98, hra 430 MB, karta 1 MB                                           
+obrazek 26 hotov (7.8 ms)                                                                                               
+krok obrazky 27-27: 1 najednou, 2048x84                                                                                 
+krok kresleni obrazku 27-27 (glDrawElements)                                                                            
+krok cteni obrazku 27-27 zpet (glReadPixels), 2048x84, hra 430 MB, karta 1 MB                                           
+obrazek 27 hotov (3.1 ms)                                                                                               
+krok obrazky 28-28: 1 najednou, 2048x96                                                                                 
+krok kresleni obrazku 28-28 (glDrawElements)                                                                            
+krok cteni obrazku 28-28 zpet (glReadPixels), 2048x96, hra 430 MB, karta 1 MB                                           
+obrazek 28 hotov (20.8 ms)                                                                                              
+krok obrazky 29-29: 1 najednou, 2048x56                                                                                 
+krok kresleni obrazku 29-29 (glDrawElements)                                                                            
+krok cteni obrazku 29-29 zpet (glReadPixels), 2048x56, hra 430 MB, karta 1 MB                                           
+obrazek 29 hotov (2.6 ms)                                                                                               
+krok obrazky 30-30: 1 najednou, 2048x130                                                                                
+krok kresleni obrazku 30-30 (glDrawElements)                                                                            
+krok cteni obrazku 30-30 zpet (glReadPixels), 2048x130, hra 430 MB, karta 1 MB                                          
+obrazek 30 hotov (3.8 ms)                                                                                               
+ceka                                                                                                                    

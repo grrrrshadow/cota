@@ -1,0 +1,32 @@
+[21:33:00.089] [DL] ===== Winlator DL 11.2-dl (build 34) =====
+[21:33:00.093] [DL] Android 16 (API 36), motorola motorola edge 60 fusion, SoC MT6878
+[21:33:00.093] [DL] GPU: Mali-G615 MC2 | OpenGL ES 3.2 v1.r44p1-01eac0.148b774f93332d7e562320793fb6c4c9
+[21:33:00.093] [DL] CPU: 8 cores, big cores 4,5,6,7, CPU list 0,1,2,3,4,5,6,7, WoW64 CPU list 0,1,2,3,4,5,6,7, launch affinity 0xff
+[21:33:00.094] [DL] Container: Container-1
+[21:33:00.094] [DL] Wine: Wine 10.10 (Custom), screen 1280x720
+[21:33:00.094] [DL] Graphics: Vulkan=vortek {adrenotoolsDriver=System,vkMaxVersion=1.2,maxDeviceMemory=0,imageCacheSize=256,resourceMemoryType=0,exposedDeviceExtensions=all}, OpenGL=zink {version=22.2.5,glVersionOverride=4.4}
+[21:33:00.094] [DL] DX wrapper: dxvk {} DX12 {}
+[21:33:00.095] [DL] Box64: 0.4.4-dl, preset PERFORMANCE, DynaCache 1, limit 512 MiB
+[21:33:00.095] [DL] Env: DXVK_STATE_CACHE_PATH=Z:\home\xuser\.cache DXVK_LOG_LEVEL=none DXVK_CONFIG_FILE=Z:\home\xuser\.config\dxvk.conf VKD3D_DEBUG=none VKD3D_CONFIG=skip_application_workarounds,no_upload_hvv,nodxr,no_staggered_submit VKD3D_FEATURE_LEVEL=12_1 VKD3D_SHADER_CACHE_PATH=Z:\home\xuser\.cache vblank_mode=0 GALLIUM_DRIVER=zink ZINK_CONTEXT_THREADED=1 MESA_GL_VERSION_OVERRIDE=4.4 MESA_DEBUG=1 WINEDEBUG=-all,err+all ZINK_DESCRIPTORS=lazy ZINK_DEBUG=compact MESA_SHADER_CACHE_DISABLE=false MESA_SHADER_CACHE_MAX_SIZE=512MB mesa_glthread=true WINEESYNC=1 TU_DEBUG=noconform
+[21:33:00.401] esync: up and running.
+[21:33:01.510] 006c:err:nsi:poll_events bind failed, errno 13.
+[21:33:04.799] 00bc:err:ole:start_rpcss Failed to start RpcSs service
+[21:33:21.314] [[31mBOX64[0m] Error initializing native libEGL.so.1 (last dlerror is libEGL.so.1: cannot open shared object file: No such file or directory)
+[21:33:21.316] 00e8:err:wgl:egl_init Failed to load libEGL.so.1: Cannot dlopen("libEGL.so.1"/0x3f02119c68, 102)
+[21:33:21.316] 
+[21:33:21.409] Mesa warning: Window 25165841 has no colormap!
+[21:33:21.410] 
+[21:33:21.421] Mesa warning: Window 25165845 has no colormap!
+[21:33:21.421] 
+[21:33:21.508] Mesa warning: Window 25165900 has no colormap!
+[21:33:21.509] 
+[21:33:21.642] ZINK: warning, this is cpu-based conditional rendering, say bye-bye to fps
+[21:33:21.646] MESA: warning: WARNING: Incorrect rendering will happen because the Vulkan device doesn't support the 'VK_EXT_depth_clip_enable' feature
+[21:33:25.032] ALSA lib ../../../alsa-lib-1.2.13/src/seq/seq.c:1011:(snd_seq_open_noupdate) Unknown SEQ default
+[21:33:25.230] 011c:err:dmsynth:synth_sink_render_thread WaitForMultipleObjects returned 0
+[21:34:21.324] Mesa warning: Window 25166107 has no colormap!
+[21:34:21.325] 
+[21:44:09.523] Mesa: User error: GL_INVALID_OPERATION in glVertexAttribDivisor()
+[21:44:09.896] X connection to :0 broken (explicit kill or server shutdown).
+[21:44:09.903] X connection to :0 broken (explicit kill or server shutdown).
+[21:44:09.905] X connection to :0 broken (explicit kill or server shutdown).
