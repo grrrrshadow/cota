@@ -67,6 +67,7 @@ void AsyncPipelineCreator_create(VkContext* context, PipelineType type) {
 
         VkGraphicsPipelineCreateInfo* createInfos = calloc(pipelineCreateRequest->pipelineCount, sizeof(VkGraphicsPipelineCreateInfo));
         vt_unserialize_vkCreateGraphicsPipelines(VK_NULL_HANDLE, VK_NULL_HANDLE, NULL, createInfos, NULL, NULL, context->inputBuffer, &pipelineCreateRequest->memoryPool);
+        hideVertexInputDivisors(context, createInfos, pipelineCreateRequest->pipelineCount);
         pipelineCreateRequest->pipelineInfos = createInfos;
     }
     else if (type == PIPELINE_TYPE_COMPUTE) {

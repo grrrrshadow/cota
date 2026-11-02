@@ -37,5 +37,9 @@ extern void checkImageFormatProperties(VkFormat format, VkImageType type, VkImag
 extern void checkDeviceProperties(VkContext* context, VkPhysicalDeviceProperties* properties, void* pNext);
 extern void checkDeviceFeatures(VkPhysicalDeviceFeatures* features, void* pNext);
 extern void destroyVkObject(VkObjectType type, VkDevice device, void* handle);
+extern void emulateVertexAttributeDivisorFeatures(VkContext* context, void* pNext);
+extern void emulateVertexAttributeDivisorProperties(VkContext* context, void* pNext);
+extern void hideVertexAttributeDivisorFromDevice(VkContext* context, VkDeviceCreateInfo* createInfo);
+extern void hideVertexInputDivisors(VkContext* context, VkGraphicsPipelineCreateInfo* createInfos, uint32_t createInfoCount);
 
 #endif

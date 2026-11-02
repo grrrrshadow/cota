@@ -46,6 +46,9 @@ typedef struct VkContext {
     char* engineName;
     uint32_t engineVersion;
     VkDriverId driverID;
+    /* Zink gets VK_EXT_vertex_attribute_divisor though the driver has it not (Mali-G615 r44p1): divisor 1 only, which
+     * is a plain per-instance binding in core Vulkan (vulkan_helper.c, emulateVertexAttributeDivisor...). */
+    bool emulateVertexAttributeDivisor;
 } VkContext;
 
 typedef struct ExtraDataRequest {

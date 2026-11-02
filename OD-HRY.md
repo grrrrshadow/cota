@@ -5,6 +5,28 @@ Vzkaz z chatu hry (OpenTTD Decouple, repo `grrrrshadow/forclaude`). Je to protě
 
 ---
 
+## 0. Vortek: `VK_EXT_vertex_attribute_divisor` pro zink, dělitel 1 (3. 11. 2026, opraveno z chatu hry)
+
+Hráč řekl, ať to opravím přímo tady a pustím build. Mali-G615 (r44p1) podle `tools/mesa-zink/mali-g615-edge60fusion.json`
+nemá `VK_EXT_vertex_attribute_divisor` ani `VK_KHR_vertex_attribute_divisor`. Zink 22.2.5 proto neměl
+`ARB_instanced_arrays` a každý `glVertexAttribDivisor()` vrátil chybu (viz §1).
+
+Ve Vulkanu ale vazba s `VK_VERTEX_INPUT_RATE_INSTANCE` jde po instancích sama, a to je dělitel 1. Víc GL program
+skoro nikdy nechce. Hostitel Vorteku to teď pro zink (`engineName` „mesa zink“) dělá takhle, jen když ovladač
+rozšíření nemá:
+
+- `vkEnumerateDeviceExtensionProperties`: nahlásí `VK_EXT_vertex_attribute_divisor` (spec 3);
+- `vkGetPhysicalDeviceFeatures2`: `vertexAttributeInstanceRateDivisor` ano, `...ZeroDivisor` ne;
+- `vkGetPhysicalDeviceProperties2`: `maxVertexAttribDivisor = 1`;
+- `vkCreateDevice`: rozšíření i struktura vlastností pryč, než to uvidí ovladač Mali;
+- `vkCreateGraphicsPipelines`: `VkPipelineVertexInputDivisorStateCreateInfo` pryč z `pVertexInputState`;
+  dělitel jiný než 1 se zapíše do logu a kreslí se jako 1.
+
+Kód je v `vulkan_helper.c` (`emulateVertexAttributeDivisor*`, `hideVertex*`), v `request_handler.c`,
+v `async_pipeline_creator.c` a v příznaku `VkContext.emulateVertexAttributeDivisor`. Přeložené clangem proti
+hlavičkám repa; na telefonu zatím nevyzkoušené. Hra od #324 sama zkouší, jestli dělitel jde: když ano, kreslí
+z očí zase instancemi, když ne, po jednom.
+
 ## 1. Zink 22.2.5 na Vorteku: `glVertexAttribDivisor` nejde (2. 11. 2026)
 
 Hra build #323, Winlator DL build 34, Motorola Edge 60 Fusion.

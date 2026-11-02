@@ -28,6 +28,90 @@ static bool isExternalMemoryHandleTypeSupported(VkPhysicalDevice physicalDevice,
            (memoryProperties->compatibleHandleTypes & handleType) != 0;
 }
 
+/* VK_EXT_vertex_attribute_divisor for zink where the driver has it not: the Mali-G615's r44p1 has neither it nor
+ * VK_KHR_vertex_attribute_divisor, so zink 22.2.5 had no ARB_instanced_arrays and every glVertexAttribDivisor() failed
+ * with GL_INVALID_OPERATION under its overridden OpenGL 4.4 (OpenTTD Decouple #323: its instanced meshes drawn as
+ * splinters, then Winlator gone). A binding of VK_VERTEX_INPUT_RATE_INSTANCE steps once per instance in core Vulkan,
+ * which is divisor 1, all a GL program asks for nearly always: so the extension is told with divisor 1 at most and no
+ * zero divisor, and the divisor state is taken out of each pipeline before the driver sees it. */
+static const char* VERTEX_ATTRIBUTE_DIVISOR_EXTENSION = "VK_EXT_vertex_attribute_divisor";
+
+static bool hasDeviceExtension(VkPhysicalDevice physicalDevice, const char* name) {
+    uint32_t count = 0;
+    if (vulkanWrapper.vkEnumerateDeviceExtensionProperties(physicalDevice, NULL, &count, NULL) != VK_SUCCESS || count == 0) return false;
+
+    VkExtensionProperties* properties = calloc(count, sizeof(VkExtensionProperties));
+    if (!properties) return false;
+
+    bool found = false;
+    if (vulkanWrapper.vkEnumerateDeviceExtensionProperties(physicalDevice, NULL, &count, properties) == VK_SUCCESS) {
+        for (uint32_t i = 0; i < count && !found; i++) found = strcmp(properties[i].extensionName, name) == 0;
+    }
+
+    free(properties);
+    return found;
+}
+
+/* Takes the first structure of a type out of a pNext chain. */
+static void unlinkVkStructure(const void** pNext, VkStructureType sType) {
+    VkBaseOutStructure** link = (VkBaseOutStructure**)pNext;
+    while (*link) {
+        if ((*link)->sType == sType) {
+            *link = (*link)->pNext;
+            return;
+        }
+        link = &(*link)->pNext;
+    }
+}
+
+void emulateVertexAttributeDivisorFeatures(VkContext* context, void* pNext) {
+    if (!context->emulateVertexAttributeDivisor) return;
+    VkPhysicalDeviceVertexAttributeDivisorFeaturesKHR* features = findNextVkStructure(pNext, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_FEATURES_KHR);
+    if (features) {
+        features->vertexAttributeInstanceRateDivisor = VK_TRUE;
+        features->vertexAttributeInstanceRateZeroDivisor = VK_FALSE;
+    }
+}
+
+void emulateVertexAttributeDivisorProperties(VkContext* context, void* pNext) {
+    if (!context->emulateVertexAttributeDivisor) return;
+    VkPhysicalDeviceVertexAttributeDivisorPropertiesEXT* properties = findNextVkStructure(pNext, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_PROPERTIES_EXT);
+    if (properties) properties->maxVertexAttribDivisor = 1;
+}
+
+void hideVertexAttributeDivisorFromDevice(VkContext* context, VkDeviceCreateInfo* createInfo) {
+    if (!context->emulateVertexAttributeDivisor) return;
+
+    char** extensions = (char**)createInfo->ppEnabledExtensionNames;
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < createInfo->enabledExtensionCount; i++) {
+        if (strcmp(extensions[i], VERTEX_ATTRIBUTE_DIVISOR_EXTENSION) != 0) extensions[count++] = extensions[i];
+    }
+    createInfo->enabledExtensionCount = count;
+
+    unlinkVkStructure(&createInfo->pNext, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_FEATURES_KHR);
+}
+
+void hideVertexInputDivisors(VkContext* context, VkGraphicsPipelineCreateInfo* createInfos, uint32_t createInfoCount) {
+    if (!context->emulateVertexAttributeDivisor) return;
+
+    for (uint32_t i = 0; i < createInfoCount; i++) {
+        VkPipelineVertexInputStateCreateInfo* vertexInputState = (VkPipelineVertexInputStateCreateInfo*)createInfos[i].pVertexInputState;
+        if (!vertexInputState) continue;
+
+        VkPipelineVertexInputDivisorStateCreateInfoKHR* divisorState = findNextVkStructure((void*)vertexInputState->pNext, VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_DIVISOR_STATE_CREATE_INFO_KHR);
+        if (!divisorState) continue;
+
+        for (uint32_t j = 0; j < divisorState->vertexBindingDivisorCount; j++) {
+            if (divisorState->pVertexBindingDivisors[j].divisor != 1) {
+                println("vortek: vertex binding %u with divisor %u drawn with divisor 1", divisorState->pVertexBindingDivisors[j].binding, divisorState->pVertexBindingDivisors[j].divisor);
+            }
+        }
+
+        unlinkVkStructure(&vertexInputState->pNext, VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_DIVISOR_STATE_CREATE_INFO_KHR);
+    }
+}
+
 static void setupExposedDeviceExtensions(VkContext* context) {
     if (!context->engineName) return;
 
@@ -106,6 +190,8 @@ void initVulkanInstance(VkContext* context, VkInstance instance, const VkApplica
     }
 
     setupExposedDeviceExtensions(context);
+    context->emulateVertexAttributeDivisor = context->engineName && strcmp(context->engineName, "mesa zink") == 0 &&
+                                             !hasDeviceExtension(physicalDevices[0], VERTEX_ATTRIBUTE_DIVISOR_EXTENSION);
 
 #if ENABLE_VALIDATION_LAYER
     VkDebugReportCallbackCreateInfoEXT debugCreateInfo = {0};
@@ -370,6 +456,15 @@ VkExtensionProperties* getExposedDeviceExtensionProperties(VkContext* context, V
 
     injectExtensions2(context, &dstProperties, propertyCount,
                       globalImplementedDeviceExtensions, ARRAY_SIZE(globalImplementedDeviceExtensions), NULL, 0);
+
+    if (context->emulateVertexAttributeDivisor) {
+        const char* emulatedExtensions[] = {VERTEX_ATTRIBUTE_DIVISOR_EXTENSION};
+        injectExtensions2(context, &dstProperties, propertyCount, emulatedExtensions, ARRAY_SIZE(emulatedExtensions), NULL, 0);
+        /* Spec version 3: the one with the features structure (emulateVertexAttributeDivisorFeatures()). */
+        for (uint32_t i = 0; i < *propertyCount; i++) {
+            if (strcmp(dstProperties[i].extensionName, VERTEX_ATTRIBUTE_DIVISOR_EXTENSION) == 0) dstProperties[i].specVersion = 3;
+        }
+    }
     return dstProperties;
 }
 
